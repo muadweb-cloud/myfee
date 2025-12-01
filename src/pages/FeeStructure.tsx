@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
+import { useSchoolId } from "@/hooks/useSchoolId";
 
 interface FeeStructure {
   id: string;
@@ -19,6 +20,7 @@ interface FeeStructure {
 }
 
 const FeeStructure = () => {
+  const { schoolId } = useSchoolId();
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingStructure, setEditingStructure] = useState<FeeStructure | null>(null);
@@ -32,14 +34,19 @@ const FeeStructure = () => {
   });
 
   useEffect(() => {
-    fetchFeeStructures();
-  }, []);
+    if (schoolId) {
+      fetchFeeStructures();
+    }
+  }, [schoolId]);
 
   const fetchFeeStructures = async () => {
+    if (!schoolId) return;
+    
     setLoading(true);
     const { data, error } = await supabase
       .from("fee_structures")
       .select("*")
+      .eq("school_id", schoolId)
       .order("class_name");
 
     if (!error && data) {
@@ -51,27 +58,23 @@ const FeeStructure = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!schoolId) {
+      toast({ title: "Error", description: "School ID not found", variant: "destructive" });
+      return;
+    }
+
     if (!formData.class_name || !formData.fee_amount) {
-      toast({
-        title: "Error",
-        description: "Please fill in required fields",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Please fill in required fields", variant: "destructive" });
       return;
     }
 
     const feeAmount = parseFloat(formData.fee_amount);
     if (isNaN(feeAmount) || feeAmount < 0) {
-      toast({
-        title: "Error",
-        description: "Please enter a valid fee amount",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Please enter a valid fee amount", variant: "destructive" });
       return;
     }
 
     if (editingStructure) {
-      // Update existing structure
       const { error } = await supabase
         .from("fee_structures")
         .update({
@@ -82,32 +85,24 @@ const FeeStructure = () => {
         .eq("id", editingStructure.id);
 
       if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
         toast({ title: "Success", description: "Fee structure updated successfully" });
         fetchFeeStructures();
         closeDialog();
       }
     } else {
-      // Create new structure
       const { error } = await supabase
         .from("fee_structures")
         .insert([{
           class_name: formData.class_name,
           fee_amount: feeAmount,
           description: formData.description || null,
+          school_id: schoolId,
         }]);
 
       if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
         toast({ title: "Success", description: "Fee structure added successfully" });
         fetchFeeStructures();
@@ -135,11 +130,7 @@ const FeeStructure = () => {
       .eq("id", id);
 
     if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Success", description: "Fee structure deleted successfully" });
       fetchFeeStructures();
@@ -158,7 +149,7 @@ const FeeStructure = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Fee Structure Management</h1>
           <p className="text-muted-foreground">Define classes and their corresponding fee amounts</p>
@@ -190,7 +181,7 @@ const FeeStructure = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="fee_amount">Fee Amount ($) *</Label>
+                  <Label htmlFor="fee_amount">Fee Amount (Ksh) *</Label>
                   <Input
                     id="fee_amount"
                     type="number"
@@ -237,43 +228,45 @@ const FeeStructure = () => {
           ) : feeStructures.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">No fee structures defined yet</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Class/Grade</TableHead>
-                  <TableHead>Fee Amount</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {feeStructures.map((structure) => (
-                  <TableRow key={structure.id}>
-                    <TableCell className="font-medium">{structure.class_name}</TableCell>
-                    <TableCell className="text-primary font-semibold">{formatCurrency(structure.fee_amount)}</TableCell>
-                    <TableCell>{structure.description || "N/A"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(structure)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(structure.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Class/Grade</TableHead>
+                    <TableHead>Fee Amount</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {feeStructures.map((structure) => (
+                    <TableRow key={structure.id}>
+                      <TableCell className="font-medium">{structure.class_name}</TableCell>
+                      <TableCell className="text-primary font-semibold">{formatCurrency(structure.fee_amount)}</TableCell>
+                      <TableCell>{structure.description || "N/A"}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(structure)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(structure.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

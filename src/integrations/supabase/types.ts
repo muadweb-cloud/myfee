@@ -20,6 +20,7 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          school_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -27,6 +28,7 @@ export type Database = {
           email: string
           full_name?: string | null
           id: string
+          school_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -34,9 +36,59 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          school_id?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "admin_profiles_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing: {
+        Row: {
+          amount: number
+          created_at: string | null
+          expiry_date: string | null
+          id: string
+          payment_method: string | null
+          plan_type: string
+          school_id: string
+          transaction_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          expiry_date?: string | null
+          id?: string
+          payment_method?: string | null
+          plan_type: string
+          school_id: string
+          transaction_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          expiry_date?: string | null
+          id?: string
+          payment_method?: string | null
+          plan_type?: string
+          school_id?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fee_structures: {
         Row: {
@@ -45,6 +97,7 @@ export type Database = {
           description: string | null
           fee_amount: number
           id: string
+          school_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -53,6 +106,7 @@ export type Database = {
           description?: string | null
           fee_amount?: number
           id?: string
+          school_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -61,9 +115,18 @@ export type Database = {
           description?: string | null
           fee_amount?: number
           id?: string
+          school_id?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fee_structures_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payments: {
         Row: {
@@ -74,6 +137,7 @@ export type Database = {
           payment_date: string | null
           payment_method: string | null
           receipt_number: string | null
+          school_id: string | null
           student_id: string
         }
         Insert: {
@@ -84,6 +148,7 @@ export type Database = {
           payment_date?: string | null
           payment_method?: string | null
           receipt_number?: string | null
+          school_id?: string | null
           student_id: string
         }
         Update: {
@@ -94,9 +159,17 @@ export type Database = {
           payment_date?: string | null
           payment_method?: string | null
           receipt_number?: string | null
+          school_id?: string | null
           student_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_student_id_fkey"
             columns: ["student_id"]
@@ -112,6 +185,7 @@ export type Database = {
           id: string
           school_address: string | null
           school_email: string | null
+          school_id: string | null
           school_name: string
           school_phone: string | null
           updated_at: string | null
@@ -121,6 +195,7 @@ export type Database = {
           id?: string
           school_address?: string | null
           school_email?: string | null
+          school_id?: string | null
           school_name?: string
           school_phone?: string | null
           updated_at?: string | null
@@ -130,8 +205,71 @@ export type Database = {
           id?: string
           school_address?: string | null
           school_email?: string | null
+          school_id?: string | null
           school_name?: string
           school_phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "school_settings_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schools: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_payment_date: string | null
+          max_students: number | null
+          next_payment_date: string | null
+          plan_type: string | null
+          school_address: string | null
+          school_email: string | null
+          school_logo_url: string | null
+          school_name: string
+          school_phone: string | null
+          subscription_status: string | null
+          trial_end: string | null
+          trial_start: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_payment_date?: string | null
+          max_students?: number | null
+          next_payment_date?: string | null
+          plan_type?: string | null
+          school_address?: string | null
+          school_email?: string | null
+          school_logo_url?: string | null
+          school_name: string
+          school_phone?: string | null
+          subscription_status?: string | null
+          trial_end?: string | null
+          trial_start?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_payment_date?: string | null
+          max_students?: number | null
+          next_payment_date?: string | null
+          plan_type?: string | null
+          school_address?: string | null
+          school_email?: string | null
+          school_logo_url?: string | null
+          school_name?: string
+          school_phone?: string | null
+          subscription_status?: string | null
+          trial_end?: string | null
+          trial_start?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -144,6 +282,8 @@ export type Database = {
           full_name: string
           id: string
           parent_contact: string | null
+          parent_name: string | null
+          school_id: string | null
           total_fee: number | null
           updated_at: string | null
         }
@@ -154,6 +294,8 @@ export type Database = {
           full_name: string
           id?: string
           parent_contact?: string | null
+          parent_name?: string | null
+          school_id?: string | null
           total_fee?: number | null
           updated_at?: string | null
         }
@@ -164,6 +306,8 @@ export type Database = {
           full_name?: string
           id?: string
           parent_contact?: string | null
+          parent_name?: string | null
+          school_id?: string | null
           total_fee?: number | null
           updated_at?: string | null
         }
@@ -175,17 +319,49 @@ export type Database = {
             referencedRelation: "fee_structures"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "students_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_school_id: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "super_admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -312,6 +488,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "super_admin"],
+    },
   },
 } as const

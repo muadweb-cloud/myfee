@@ -9,12 +9,16 @@ import {
   Settings, 
   LogOut,
   GraduationCap,
-  BookOpen
+  BookOpen,
+  CreditCard,
+  MessageCircle
 } from "lucide-react";
+import { useSubscription } from "@/hooks/useSubscription";
 
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
   const location = useLocation();
+  const { subscription } = useSubscription();
 
   if (loading) {
     return (
@@ -37,7 +41,9 @@ const MainLayout = () => {
     { name: "Fee Structure", href: "/fee-structure", icon: BookOpen },
     { name: "Payments", href: "/payments", icon: DollarSign },
     { name: "Reports", href: "/reports", icon: FileText },
+    { name: "Billing", href: "/billing", icon: CreditCard },
     { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Contact Us", href: "/contact", icon: MessageCircle },
   ];
 
   return (
