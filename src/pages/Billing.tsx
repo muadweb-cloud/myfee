@@ -186,8 +186,8 @@ const Billing = () => {
         </Card>
       )}
 
-      {/* Contact Admin Card */}
-      <Card className="border-primary">
+      {/* Contact Admin Info */}
+      <Card className="border-primary bg-primary/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5" />
@@ -197,32 +197,24 @@ const Billing = () => {
             To subscribe to any plan, please contact the administrator
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-            <MessageCircle className="h-5 w-5 text-success" />
-            <div>
-              <p className="text-sm font-medium">WhatsApp</p>
-              <a 
-                href="https://wa.me/254726383188" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                +254 726 383 188
-              </a>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-            <Mail className="h-5 w-5 text-primary" />
-            <div>
-              <p className="text-sm font-medium">Email</p>
-              <a 
-                href="mailto:Muadhaji24@gmail.com"
-                className="text-primary hover:underline"
-              >
-                Muadhaji24@gmail.com
-              </a>
-            </div>
+        <CardContent>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              className="flex items-center gap-2"
+              onClick={() => window.open("https://wa.me/254726383188", "_blank")}
+            >
+              <MessageCircle className="h-4 w-4 text-success" />
+              WhatsApp
+            </Button>
+            <Button
+              variant="outline"
+              className="flex items-center gap-2"
+              onClick={() => window.location.href = "mailto:Muadhaji24@gmail.com"}
+            >
+              <Mail className="h-4 w-4 text-primary" />
+              Email
+            </Button>
           </div>
         </CardContent>
       </Card>
