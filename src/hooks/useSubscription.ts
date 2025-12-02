@@ -48,7 +48,9 @@ export const useSubscription = () => {
         if (school) {
           const trialEnd = new Date(school.trial_end);
           const now = new Date();
-          const daysRemaining = Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+          // Calculate exact hours difference and convert to days
+          const hoursRemaining = (trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60);
+          const daysRemaining = Math.max(0, Math.floor(hoursRemaining / 24));
 
           setSubscription({
             status: school.subscription_status as 'trial' | 'active' | 'expired',

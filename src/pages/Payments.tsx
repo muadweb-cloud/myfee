@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Receipt } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/formatters";
+import { useSchoolId } from "@/hooks/useSchoolId";
 
 interface Payment {
   id: string;
@@ -31,6 +32,7 @@ interface Student {
 }
 
 const Payments = () => {
+  const { schoolId } = useSchoolId();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -48,14 +50,19 @@ const Payments = () => {
   });
 
   useEffect(() => {
-    fetchPayments();
-    fetchStudents();
-  }, []);
+    if (schoolId) {
+      fetchPayments();
+      fetchStudents();
+    }
+  }, [schoolId]);
 
   const fetchStudents = async () => {
+    if (!schoolId) return;
+    
     const { data, error } = await supabase
       .from("students")
       .select("*")
+      .eq("school_id", schoolId)
       .order("full_name");
 
     if (!error && data) {
@@ -64,6 +71,8 @@ const Payments = () => {
   };
 
   const fetchPayments = async () => {
+    if (!schoolId) return;
+    
     setLoading(true);
     const { data, error } = await supabase
       .from("payments")
@@ -71,6 +80,7 @@ const Payments = () => {
         *,
         students (full_name)
       `)
+      .eq("school_id", schoolId)
       .order("payment_date", { ascending: false });
 
     if (!error && data) {
@@ -104,6 +114,15 @@ const Payments = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!schoolId) {
+      toast({
+        title: "Error",
+        description: "School ID not found",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!formData.student_id || !formData.amount) {
       toast({
         title: "Error",
@@ -130,6 +149,7 @@ const Payments = () => {
         amount: amount,
         payment_method: formData.payment_method,
         notes: formData.notes || null,
+        school_id: schoolId,
       }]);
 
     if (error) {
@@ -226,7 +246,7 @@ const Payments = () => {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="amount">Amount ($) *</Label>
+                  <Label htmlFor="amount">Amount (Ksh) *</Label>
                   <Input
                     id="amount"
                     type="number"

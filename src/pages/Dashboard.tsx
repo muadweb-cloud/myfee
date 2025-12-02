@@ -44,34 +44,28 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   const [monthlyTarget, setMonthlyTarget] = useState(0);
+  const [schoolName, setSchoolName] = useState("");
 
   useEffect(() => {
     if (schoolId) {
       fetchDashboardData();
-      fetchMonthlyTarget();
     }
   }, [schoolId]);
-
-  const fetchMonthlyTarget = async () => {
-    if (!schoolId) return;
-
-    try {
-      const { data } = await supabase
-        .from("schools")
-        .select("monthly_target")
-        .eq("id", schoolId)
-        .single();
-
-      setMonthlyTarget(data?.monthly_target || 0);
-    } catch (error) {
-      console.error("Error fetching monthly target:", error);
-    }
-  };
 
   const fetchDashboardData = async () => {
     if (!schoolId) return;
 
     try {
+      // Fetch school data
+      const { data: schoolData } = await supabase
+        .from("schools")
+        .select("monthly_target, school_name")
+        .eq("id", schoolId)
+        .single();
+
+      setMonthlyTarget(schoolData?.monthly_target || 0);
+      setSchoolName(schoolData?.school_name || "");
+
       // Fetch total students
       const { count: studentCount } = await supabase
         .from("students")
@@ -182,7 +176,7 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <h1 className="text-3xl font-bold text-foreground">{schoolName || "Dashboard"}</h1>
           <p className="text-muted-foreground">Welcome back! Here's your school's financial overview</p>
         </div>
         
@@ -264,7 +258,7 @@ const Dashboard = () => {
           <CardDescription>
             {monthlyTarget > 0 
               ? `Your monthly collection target: ${formatCurrency(monthlyTarget)}`
-              : "No monthly target set by admin"}
+              : "Set your monthly target in Settings"}
           </CardDescription>
         </CardHeader>
         <CardContent>
