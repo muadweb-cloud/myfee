@@ -58,6 +58,7 @@ export type Database = {
           payment_method: string | null
           plan_type: string
           school_id: string
+          status: string | null
           transaction_id: string | null
         }
         Insert: {
@@ -68,6 +69,7 @@ export type Database = {
           payment_method?: string | null
           plan_type: string
           school_id: string
+          status?: string | null
           transaction_id?: string | null
         }
         Update: {
@@ -78,6 +80,7 @@ export type Database = {
           payment_method?: string | null
           plan_type?: string
           school_id?: string
+          status?: string | null
           transaction_id?: string | null
         }
         Relationships: [
@@ -226,6 +229,7 @@ export type Database = {
           id: string
           last_payment_date: string | null
           max_students: number | null
+          monthly_target: number | null
           next_payment_date: string | null
           plan_type: string | null
           school_address: string | null
@@ -243,6 +247,7 @@ export type Database = {
           id?: string
           last_payment_date?: string | null
           max_students?: number | null
+          monthly_target?: number | null
           next_payment_date?: string | null
           plan_type?: string | null
           school_address?: string | null
@@ -260,6 +265,7 @@ export type Database = {
           id?: string
           last_payment_date?: string | null
           max_students?: number | null
+          monthly_target?: number | null
           next_payment_date?: string | null
           plan_type?: string | null
           school_address?: string | null

@@ -43,11 +43,30 @@ const Dashboard = () => {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [monthlyTarget, setMonthlyTarget] = useState(0);
+
   useEffect(() => {
     if (schoolId) {
       fetchDashboardData();
+      fetchMonthlyTarget();
     }
   }, [schoolId]);
+
+  const fetchMonthlyTarget = async () => {
+    if (!schoolId) return;
+
+    try {
+      const { data } = await supabase
+        .from("schools")
+        .select("monthly_target")
+        .eq("id", schoolId)
+        .single();
+
+      setMonthlyTarget(data?.monthly_target || 0);
+    } catch (error) {
+      console.error("Error fetching monthly target:", error);
+    }
+  };
 
   const fetchDashboardData = async () => {
     if (!schoolId) return;
@@ -155,6 +174,10 @@ const Dashboard = () => {
     ? Math.round((stats.totalCollectedFees / stats.totalExpectedFees) * 100) 
     : 0;
 
+  const targetPercentage = monthlyTarget > 0
+    ? Math.round((stats.totalCollectedFees / monthlyTarget) * 100)
+    : 0;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -234,31 +257,35 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Collection Progress */}
+      {/* Monthly Target Progress */}
       <Card>
         <CardHeader>
           <CardTitle>Monthly Target Progress</CardTitle>
-          <CardDescription>Current month's fee collection target</CardDescription>
+          <CardDescription>
+            {monthlyTarget > 0 
+              ? `Your monthly collection target: ${formatCurrency(monthlyTarget)}`
+              : "No monthly target set by admin"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Collection Progress</span>
-              <span className="font-semibold">{collectionPercentage}%</span>
+              <span className="text-muted-foreground">Target Achievement</span>
+              <span className="font-semibold">{targetPercentage}%</span>
             </div>
-            <div className="relative h-8 bg-muted rounded-full overflow-hidden">
+            <div className="relative h-10 bg-muted rounded-full overflow-hidden">
               <div 
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-primary/80 rounded-full flex items-center justify-center transition-all duration-500"
-                style={{ width: `${Math.min(collectionPercentage, 100)}%` }}
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-success to-success/80 rounded-full flex items-center justify-center transition-all duration-500"
+                style={{ width: `${Math.min(targetPercentage, 100)}%` }}
               >
-                {collectionPercentage > 10 && (
-                  <span className="text-xs font-semibold text-white">{collectionPercentage}%</span>
+                {targetPercentage > 10 && (
+                  <span className="text-sm font-bold text-white">{targetPercentage}%</span>
                 )}
               </div>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>Collected: {formatCurrency(stats.totalCollectedFees)}</span>
-              <span>Target: {formatCurrency(stats.totalExpectedFees)}</span>
+              <span>Target: {formatCurrency(monthlyTarget)}</span>
             </div>
           </div>
         </CardContent>
