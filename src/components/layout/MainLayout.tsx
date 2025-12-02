@@ -11,14 +11,35 @@ import {
   GraduationCap,
   BookOpen,
   CreditCard,
-  MessageCircle
+  MessageCircle,
+  Shield
 } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
   const location = useLocation();
   const { subscription } = useSubscription();
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkSuperAdmin = async () => {
+      if (!user) return;
+      
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "super_admin")
+        .maybeSingle();
+
+      setIsSuperAdmin(!!data);
+    };
+
+    checkSuperAdmin();
+  }, [user]);
 
   if (loading) {
     return (
@@ -37,6 +58,7 @@ const MainLayout = () => {
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    ...(isSuperAdmin ? [{ name: "Admin Dashboard", href: "/admin-dashboard", icon: Shield }] : []),
     { name: "Students", href: "/students", icon: Users },
     { name: "Fee Structure", href: "/fee-structure", icon: BookOpen },
     { name: "Payments", href: "/payments", icon: DollarSign },

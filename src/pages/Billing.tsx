@@ -1,238 +1,333 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useSchoolId } from "@/hooks/useSchoolId";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/formatters";
-import { Calendar, CreditCard, Check } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
+import { useSchoolId } from "@/hooks/useSchoolId";
+import { useSubscription } from "@/hooks/useSubscription";
+import { AlertCircle, Calendar, MessageCircle, Mail, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
-const PLANS = {
-  small: { monthly: 999.99, yearly: 9999.99, maxStudents: 200, name: "Small (<200 students)" },
-  medium: { monthly: 1499.99, yearly: 14999.99, maxStudents: 500, name: "Medium (200-500 students)" },
-  large: { monthly: 1999.99, yearly: 19999.99, maxStudents: 1000, name: "Large (500+ students)" }
-};
+interface BillingRecord {
+  id: string;
+  amount: number;
+  plan_type: string;
+  payment_method: string;
+  transaction_id: string;
+  created_at: string;
+  expiry_date: string;
+  status: string;
+}
 
-export default function Billing() {
+const plans = [
+  {
+    name: "Small",
+    monthlyPrice: 999.99,
+    yearlyPrice: 9999.99,
+    maxStudents: 200,
+    features: ["Up to 200 students", "Fee management", "Payment tracking", "Basic reports"],
+  },
+  {
+    name: "Medium",
+    monthlyPrice: 1499.99,
+    yearlyPrice: 14999.99,
+    maxStudents: 500,
+    features: ["Up to 500 students", "Fee management", "Payment tracking", "Advanced reports", "SMS notifications"],
+  },
+  {
+    name: "Large",
+    monthlyPrice: 1999.99,
+    yearlyPrice: 19999.99,
+    maxStudents: 1000,
+    features: ["Up to 1000 students", "Fee management", "Payment tracking", "Advanced reports", "SMS notifications", "Priority support"],
+  },
+];
+
+const Billing = () => {
   const { schoolId } = useSchoolId();
-  const [school, setSchool] = useState<any>(null);
-  const [billingHistory, setBillingHistory] = useState<any[]>([]);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<{ type: 'small' | 'medium' | 'large', period: 'monthly' | 'yearly' } | null>(null);
+  const { subscription } = useSubscription();
+  const { toast } = useToast();
+  const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState<string | null>(null);
 
   useEffect(() => {
     if (schoolId) {
-      fetchSchoolData();
       fetchBillingHistory();
     }
   }, [schoolId]);
 
-  const fetchSchoolData = async () => {
-    const { data } = await supabase
-      .from('schools')
-      .select('*')
-      .eq('id', schoolId)
-      .single();
-    
-    if (data) setSchool(data);
-  };
-
   const fetchBillingHistory = async () => {
-    const { data } = await supabase
-      .from('billing')
-      .select('*')
-      .eq('school_id', schoolId)
-      .order('created_at', { ascending: false });
-    
-    if (data) setBillingHistory(data);
-  };
+    if (!schoolId) return;
 
-  const handlePayment = async () => {
-    if (!selectedPlan || !phoneNumber) {
-      toast.error("Please select a plan and enter your M-PESA phone number");
-      return;
-    }
-
-    setLoading(true);
     try {
-      const amount = PLANS[selectedPlan.type][selectedPlan.period];
-      
-      const { data, error } = await supabase.functions.invoke('mpesa-stkpush', {
-        body: {
-          phone: phoneNumber,
-          amount: amount,
-          schoolId: schoolId,
-          planType: selectedPlan.period,
-          planSize: selectedPlan.type
-        }
-      });
+      const { data, error } = await supabase
+        .from("billing")
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
-      
-      toast.success("M-PESA STK Push sent! Please complete payment on your phone.");
-    } catch (error: any) {
-      toast.error(error.message || "Payment initiation failed");
+      setBillingHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching billing history:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const trialDaysRemaining = school ? Math.max(0, Math.ceil((new Date(school.trial_end).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0;
+  const requestSubscription = async (planType: string, amount: number) => {
+    if (!subscription?.schoolId) {
+      toast({
+        title: "Error",
+        description: "School ID not found",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setProcessing(planType);
+
+    try {
+      const { error } = await supabase
+        .from("billing")
+        .insert({
+          school_id: subscription.schoolId,
+          amount,
+          plan_type: planType,
+          payment_method: "manual",
+          status: "pending",
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Request Submitted",
+        description: "Your subscription request has been submitted. Please contact admin to complete activation.",
+      });
+
+      fetchBillingHistory();
+    } catch (error) {
+      console.error("Request error:", error);
+      toast({
+        title: "Request Failed",
+        description: "Failed to submit subscription request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold">Billing & Subscription</h1>
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Subscription & Billing</h1>
-        <p className="text-muted-foreground mt-1">Manage your subscription plan and payments</p>
+        <h1 className="text-3xl font-bold text-foreground">Billing & Subscription</h1>
+        <p className="text-muted-foreground">Manage your school subscription plan</p>
       </div>
 
-      {/* Current Status */}
-      <Card className="p-6">
-        <div className="grid md:grid-cols-3 gap-6">
-          <div>
-            <p className="text-sm text-muted-foreground mb-2">Subscription Status</p>
-            <Badge variant={school?.subscription_status === 'active' ? 'default' : school?.subscription_status === 'trial' ? 'secondary' : 'destructive'}>
-              {school?.subscription_status?.toUpperCase()}
-            </Badge>
-          </div>
-          
-          {school?.subscription_status === 'trial' && (
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Trial Days Remaining</p>
-              <p className="text-2xl font-bold text-foreground">{trialDaysRemaining} days</p>
-            </div>
-          )}
-
-          <div>
-            <p className="text-sm text-muted-foreground mb-2">Current Plan</p>
-            <p className="text-lg font-semibold text-foreground">{PLANS[school?.plan_type as keyof typeof PLANS]?.name}</p>
-            <p className="text-sm text-muted-foreground">Max {school?.max_students} students</p>
-          </div>
-
-          {school?.next_payment_date && (
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Next Payment</p>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                <p className="text-sm">{new Date(school.next_payment_date).toLocaleDateString()}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* Subscription Plans */}
-      {(school?.subscription_status === 'trial' || school?.subscription_status === 'expired') && (
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Choose Your Plan</h2>
-          
-          <Tabs defaultValue="monthly" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
-              <TabsTrigger value="yearly">Yearly (Save 2 months)</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="monthly" className="space-y-4">
-              {Object.entries(PLANS).map(([key, plan]) => (
-                <Card key={key} className={`p-4 cursor-pointer transition-all ${selectedPlan?.type === key && selectedPlan?.period === 'monthly' ? 'ring-2 ring-primary' : ''}`}
-                  onClick={() => setSelectedPlan({ type: key as any, period: 'monthly' })}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold">{plan.name}</h3>
-                      <p className="text-sm text-muted-foreground">Up to {plan.maxStudents} students</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary">{formatCurrency(plan.monthly)}</p>
-                      <p className="text-sm text-muted-foreground">per month</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </TabsContent>
-
-            <TabsContent value="yearly" className="space-y-4">
-              {Object.entries(PLANS).map(([key, plan]) => (
-                <Card key={key} className={`p-4 cursor-pointer transition-all ${selectedPlan?.type === key && selectedPlan?.period === 'yearly' ? 'ring-2 ring-primary' : ''}`}
-                  onClick={() => setSelectedPlan({ type: key as any, period: 'yearly' })}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold">{plan.name}</h3>
-                      <p className="text-sm text-muted-foreground">Up to {plan.maxStudents} students</p>
-                      <Badge variant="secondary" className="mt-1">Save 2 months FREE</Badge>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary">{formatCurrency(plan.yearly)}</p>
-                      <p className="text-sm text-muted-foreground">per year</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </TabsContent>
-          </Tabs>
-
-          {selectedPlan && (
-            <div className="mt-6 space-y-4">
+      {/* Subscription Status */}
+      {subscription && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Subscription</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
               <div>
-                <Label htmlFor="phone">M-PESA Phone Number</Label>
-                <Input
-                  id="phone"
-                  placeholder="254XXXXXXXXX"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                />
+                <p className="text-sm text-muted-foreground">Status</p>
+                <Badge
+                  variant={
+                    subscription.status === "active"
+                      ? "default"
+                      : subscription.status === "trial"
+                      ? "secondary"
+                      : "destructive"
+                  }
+                >
+                  {subscription.status.toUpperCase()}
+                </Badge>
               </div>
-
-              <Button onClick={handlePayment} disabled={loading} className="w-full">
-                <CreditCard className="mr-2 h-4 w-4" />
-                {loading ? "Processing..." : `Pay ${formatCurrency(PLANS[selectedPlan.type][selectedPlan.period])} with M-PESA`}
-              </Button>
+              {subscription.status === "trial" && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Trial Days Remaining</p>
+                  <p className="text-2xl font-bold">{subscription.trialDaysRemaining}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-sm text-muted-foreground">Plan Type</p>
+                <p className="text-lg font-semibold capitalize">{subscription.planType}</p>
+                <p className="text-sm text-muted-foreground">Max {subscription.maxStudents} students</p>
+              </div>
+              {subscription.nextPaymentDate && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Next Payment Date</p>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <p className="text-sm">
+                      {new Date(subscription.nextPaymentDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </CardContent>
         </Card>
       )}
 
+      {/* Contact Admin Card */}
+      <Card className="border-primary">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5" />
+            Subscribe to a Plan
+          </CardTitle>
+          <CardDescription>
+            To subscribe to any plan, please contact the administrator
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+            <MessageCircle className="h-5 w-5 text-success" />
+            <div>
+              <p className="text-sm font-medium">WhatsApp</p>
+              <a 
+                href="https://wa.me/254726383188" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                +254 726 383 188
+              </a>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+            <Mail className="h-5 w-5 text-primary" />
+            <div>
+              <p className="text-sm font-medium">Email</p>
+              <a 
+                href="mailto:Muadhaji24@gmail.com"
+                className="text-primary hover:underline"
+              >
+                Muadhaji24@gmail.com
+              </a>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Subscription Plans */}
+      <div className="grid gap-6 md:grid-cols-3">
+        {plans.map((plan) => (
+          <Card key={plan.name} className={subscription?.planType === plan.name.toLowerCase() ? "border-primary" : ""}>
+            <CardHeader>
+              <CardTitle>{plan.name} Plan</CardTitle>
+              <div className="space-y-1">
+                <div className="text-3xl font-bold">{formatCurrency(plan.monthlyPrice)}</div>
+                <p className="text-sm text-muted-foreground">per month</p>
+                <div className="text-xl font-semibold text-primary">{formatCurrency(plan.yearlyPrice)}</div>
+                <p className="text-xs text-muted-foreground">per year (2 months free)</p>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-2">
+                {plan.features.map((feature, index) => (
+                  <li key={index} className="text-sm flex items-start">
+                    <CheckCircle className="h-4 w-4 mr-2 text-success flex-shrink-0 mt-0.5" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="space-y-2">
+                <Button
+                  className="w-full"
+                  onClick={() => requestSubscription(`${plan.name.toLowerCase()}-monthly`, plan.monthlyPrice)}
+                  disabled={processing !== null}
+                >
+                  {processing === `${plan.name.toLowerCase()}-monthly` ? "Submitting..." : "Request Monthly Plan"}
+                </Button>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => requestSubscription(`${plan.name.toLowerCase()}-yearly`, plan.yearlyPrice)}
+                  disabled={processing !== null}
+                >
+                  {processing === `${plan.name.toLowerCase()}-yearly` ? "Submitting..." : "Request Yearly Plan"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       {/* Payment History */}
-      <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">Payment History</h2>
-        
-        {billingHistory.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">No payment history yet</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Transaction ID</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {billingHistory.map((bill) => (
-                <TableRow key={bill.id}>
-                  <TableCell>{new Date(bill.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell>{formatCurrency(bill.amount)}</TableCell>
-                  <TableCell className="capitalize">{bill.plan_type}</TableCell>
-                  <TableCell className="font-mono text-sm">{bill.transaction_id}</TableCell>
-                  <TableCell>
-                    <Badge variant="default">
-                      <Check className="h-3 w-3 mr-1" />
-                      Paid
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Subscription History</CardTitle>
+          <CardDescription>Your subscription requests and payments</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {billingHistory.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">No billing history yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Expiry</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {billingHistory.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>{formatCurrency(record.amount)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{record.plan_type}</Badge>
+                      </TableCell>
+                      <TableCell>{record.payment_method || "N/A"}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            record.status === "approved"
+                              ? "default"
+                              : record.status === "pending"
+                              ? "secondary"
+                              : "destructive"
+                          }
+                        >
+                          {record.status || "N/A"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{new Date(record.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {record.expiry_date ? new Date(record.expiry_date).toLocaleDateString() : "N/A"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
-}
+};
+
+export default Billing;
