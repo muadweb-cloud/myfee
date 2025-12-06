@@ -64,6 +64,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (event === 'SIGNED_IN' && session) {
           // Use setTimeout to avoid Supabase auth deadlock
           setTimeout(async () => {
+            // Check current path - don't interfere with super admin login flow
+            const currentPath = window.location.pathname;
+            if (currentPath.startsWith('/superadmin')) {
+              return; // Don't redirect on super admin pages
+            }
+            
             // Check if user is super_admin - don't redirect them
             const { data: roleData } = await supabase
               .from("user_roles")

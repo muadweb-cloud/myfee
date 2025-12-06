@@ -54,7 +54,8 @@ const SuperAdminLogin = () => {
       }
 
       toast.success("Welcome, Super Admin!");
-      navigate("/superadmin");
+      // Use replace to prevent back navigation and ensure navigation happens
+      navigate("/superadmin", { replace: true });
     } catch (error) {
       console.error("Login error:", error);
       toast.error("An error occurred during login");
