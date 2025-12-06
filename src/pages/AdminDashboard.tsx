@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -8,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { formatCurrency } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Building2, Users, Settings, Power, PowerOff, Calendar } from "lucide-react";
+import { Check, X, Building2, Users, Settings, Power, PowerOff, Calendar, Eye, Trash2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -24,11 +26,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface School {
   id: string;
   school_name: string;
   school_email: string;
+  school_phone: string | null;
   subscription_status: string;
   plan_type: string;
   max_students: number;
@@ -60,9 +73,12 @@ interface SubscriptionFormData {
 
 const AdminDashboard = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
   const [requests, setRequests] = useState<SubscriptionRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ [key: string]: number }>({});
   
   // Subscription management dialog
@@ -76,9 +92,45 @@ const AdminDashboard = () => {
   });
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // View details dialog
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [viewingSchool, setViewingSchool] = useState<School | null>(null);
+
+  // Delete confirmation
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingSchool, setDeletingSchool] = useState<School | null>(null);
+
+  // Check if user is super admin
   useEffect(() => {
-    fetchData();
-  }, []);
+    const checkAccess = async () => {
+      if (!user) {
+        navigate("/auth");
+        return;
+      }
+
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "super_admin")
+        .maybeSingle();
+
+      if (!data) {
+        toast({
+          title: "Access Denied",
+          description: "You don't have permission to access the admin dashboard",
+          variant: "destructive",
+        });
+        navigate("/dashboard");
+        return;
+      }
+
+      setIsSuperAdmin(true);
+      fetchData();
+    };
+
+    checkAccess();
+  }, [user, navigate]);
 
   const fetchData = async () => {
     try {
@@ -335,13 +387,64 @@ const AdminDashboard = () => {
     }
   };
 
-  if (loading) {
+  const openViewDialog = (school: School) => {
+    setViewingSchool(school);
+    setIsViewDialogOpen(true);
+  };
+
+  const openDeleteDialog = (school: School) => {
+    setDeletingSchool(school);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const deleteSchool = async () => {
+    if (!deletingSchool) return;
+
+    try {
+      // Delete related records first
+      await supabase.from("payments").delete().eq("school_id", deletingSchool.id);
+      await supabase.from("students").delete().eq("school_id", deletingSchool.id);
+      await supabase.from("fee_structures").delete().eq("school_id", deletingSchool.id);
+      await supabase.from("billing").delete().eq("school_id", deletingSchool.id);
+      await supabase.from("school_settings").delete().eq("school_id", deletingSchool.id);
+      await supabase.from("admin_profiles").delete().eq("school_id", deletingSchool.id);
+      
+      const { error } = await supabase
+        .from("schools")
+        .delete()
+        .eq("id", deletingSchool.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "School Deleted",
+        description: `${deletingSchool.school_name} has been deleted successfully`,
+      });
+
+      setIsDeleteDialogOpen(false);
+      setDeletingSchool(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error deleting school:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete school",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading || isSuperAdmin === null) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         <div className="text-muted-foreground">Loading...</div>
       </div>
     );
+  }
+
+  if (!isSuperAdmin) {
+    return null;
   }
 
   return (
@@ -473,10 +576,10 @@ const AdminDashboard = () => {
                 <TableRow>
                   <TableHead>School Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Expires</TableHead>
-                  <TableHead>Monthly Target</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -485,6 +588,7 @@ const AdminDashboard = () => {
                   <TableRow key={school.id}>
                     <TableCell className="font-medium">{school.school_name}</TableCell>
                     <TableCell>{school.school_email}</TableCell>
+                    <TableCell>{school.school_phone || "N/A"}</TableCell>
                     <TableCell>
                       <Badge
                         variant={
@@ -499,19 +603,9 @@ const AdminDashboard = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={school.plan_type}
-                        onValueChange={(value) => updateSchoolPlan(school.id, value)}
-                      >
-                        <SelectTrigger className="w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="small">Small</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="large">Large</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Badge variant="outline" className="capitalize">
+                        {school.plan_type}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       {school.next_payment_date 
@@ -521,58 +615,37 @@ const AdminDashboard = () => {
                         : "N/A"}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2 items-center">
-                        <Input
-                          type="number"
-                          className="w-28"
-                          placeholder={school.monthly_target?.toString() || "0"}
-                          value={editingTarget[school.id] || ""}
-                          onChange={(e) =>
-                            setEditingTarget({
-                              ...editingTarget,
-                              [school.id]: Number(e.target.value),
-                            })
-                          }
-                        />
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() =>
-                            updateMonthlyTarget(school.id, editingTarget[school.id] || 0)
-                          }
-                        >
-                          Set
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => openManageDialog(school)}
+                          onClick={() => openViewDialog(school)}
                         >
-                          <Settings className="h-4 w-4 mr-1" />
-                          Manage
+                          <Eye className="h-4 w-4" />
                         </Button>
                         {school.subscription_status === "active" ? (
                           <Button
                             size="sm"
-                            variant="destructive"
+                            variant="secondary"
                             onClick={() => deactivateSubscription(school)}
                           >
-                            <PowerOff className="h-4 w-4 mr-1" />
-                            Deactivate
+                            <PowerOff className="h-4 w-4" />
                           </Button>
                         ) : (
                           <Button
                             size="sm"
                             onClick={() => openManageDialog(school)}
                           >
-                            <Power className="h-4 w-4 mr-1" />
-                            Activate
+                            <Power className="h-4 w-4" />
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => openDeleteDialog(school)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -697,6 +770,110 @@ const AdminDashboard = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* View School Details Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>School Details</DialogTitle>
+            <DialogDescription>
+              Details for {viewingSchool?.school_name}
+            </DialogDescription>
+          </DialogHeader>
+          {viewingSchool && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">School Name</Label>
+                  <p className="font-medium">{viewingSchool.school_name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Email</Label>
+                  <p className="font-medium">{viewingSchool.school_email || "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Phone</Label>
+                  <p className="font-medium">{viewingSchool.school_phone || "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <Badge
+                    variant={
+                      viewingSchool.subscription_status === "active"
+                        ? "default"
+                        : viewingSchool.subscription_status === "trial"
+                        ? "secondary"
+                        : "destructive"
+                    }
+                  >
+                    {viewingSchool.subscription_status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Plan</Label>
+                  <p className="font-medium capitalize">{viewingSchool.plan_type}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Max Students</Label>
+                  <p className="font-medium">{viewingSchool.max_students}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Monthly Target</Label>
+                  <p className="font-medium">{formatCurrency(viewingSchool.monthly_target)}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Next Payment</Label>
+                  <p className="font-medium">
+                    {viewingSchool.next_payment_date 
+                      ? new Date(viewingSchool.next_payment_date).toLocaleDateString()
+                      : "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Created</Label>
+                  <p className="font-medium">
+                    {new Date(viewingSchool.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              setIsViewDialogOpen(false);
+              if (viewingSchool) openManageDialog(viewingSchool);
+            }}>
+              Manage Subscription
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete School</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deletingSchool?.school_name}</strong>? 
+              This will permanently delete the school and all associated data including students, 
+              payments, and fee structures. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteSchool}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete School
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
