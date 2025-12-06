@@ -54,7 +54,7 @@ const SuperAdminLogin = () => {
       }
 
       toast.success("Welcome, Super Admin!");
-      navigate("/admin");
+      navigate("/superadmin");
     } catch (error) {
       console.error("Login error:", error);
       toast.error("An error occurred during login");
