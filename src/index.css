@@ -140,3 +140,17 @@ All colors MUST be HSL.
     @apply font-semibold;
   }
 }
+
+@layer components {
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+
+  .hover-lift {
+    @apply transition-all duration-300 ease-out hover:shadow-lg hover:-translate-y-1;
+  }
+
+  .interactive-box {
+    @apply transition-all duration-300 ease-out hover:shadow-lg hover:scale-[1.02] hover:border-primary/30;
+  }
+}
