@@ -4,10 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
 import { useSubscription } from "@/hooks/useSubscription";
-import { AlertCircle, Calendar, MessageCircle, Mail, CheckCircle } from "lucide-react";
+import { Calendar, MessageCircle, Mail, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface BillingRecord {
@@ -52,6 +53,25 @@ const Billing = () => {
   const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<{ name: string; type: string; amount: number } | null>(null);
+
+  const handleRequestClick = (planName: string, type: string, amount: number) => {
+    setSelectedPlan({ name: planName, type, amount });
+    setContactDialogOpen(true);
+  };
+
+  const handleContactAndRequest = async (method: "whatsapp" | "email") => {
+    if (selectedPlan) {
+      await requestSubscription(`${selectedPlan.name.toLowerCase()}-${selectedPlan.type}`, selectedPlan.amount);
+      if (method === "whatsapp") {
+        window.open("https://wa.me/254726383188", "_blank");
+      } else {
+        window.location.href = "mailto:Muadhaji24@gmail.com";
+      }
+    }
+    setContactDialogOpen(false);
+  };
 
   useEffect(() => {
     if (schoolId) {
@@ -186,38 +206,38 @@ const Billing = () => {
         </Card>
       )}
 
-      {/* Contact Admin Info */}
-      <Card className="border-primary bg-primary/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5" />
-            Subscribe to a Plan
-          </CardTitle>
-          <CardDescription>
-            To subscribe to any plan, please contact the administrator
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
+      {/* Contact Dialog */}
+      <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Contact Administrator</DialogTitle>
+            <DialogDescription>
+              {selectedPlan && (
+                <>Request {selectedPlan.name} {selectedPlan.type} plan ({formatCurrency(selectedPlan.amount)})</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 pt-4">
+            <p className="text-sm text-muted-foreground">Choose how you'd like to contact us:</p>
             <Button
+              className="w-full justify-start gap-3"
               variant="outline"
-              className="flex items-center gap-2"
-              onClick={() => window.open("https://wa.me/254726383188", "_blank")}
+              onClick={() => handleContactAndRequest("whatsapp")}
             >
-              <MessageCircle className="h-4 w-4 text-success" />
-              WhatsApp
+              <MessageCircle className="h-5 w-5 text-green-500" />
+              WhatsApp: +254 726 383 188
             </Button>
             <Button
+              className="w-full justify-start gap-3"
               variant="outline"
-              className="flex items-center gap-2"
-              onClick={() => window.location.href = "mailto:Muadhaji24@gmail.com"}
+              onClick={() => handleContactAndRequest("email")}
             >
-              <Mail className="h-4 w-4 text-primary" />
-              Email
+              <Mail className="h-5 w-5 text-primary" />
+              Email: Muadhaji24@gmail.com
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       {/* Subscription Plans */}
       <div className="grid gap-6 md:grid-cols-3">
@@ -244,18 +264,18 @@ const Billing = () => {
               <div className="space-y-2">
                 <Button
                   className="w-full"
-                  onClick={() => requestSubscription(`${plan.name.toLowerCase()}-monthly`, plan.monthlyPrice)}
+                  onClick={() => handleRequestClick(plan.name, "monthly", plan.monthlyPrice)}
                   disabled={processing !== null}
                 >
-                  {processing === `${plan.name.toLowerCase()}-monthly` ? "Submitting..." : "Request Monthly Plan"}
+                  {processing === `${plan.name.toLowerCase()}-monthly` ? "Submitting..." : "Request Monthly"}
                 </Button>
                 <Button
                   className="w-full"
                   variant="outline"
-                  onClick={() => requestSubscription(`${plan.name.toLowerCase()}-yearly`, plan.yearlyPrice)}
+                  onClick={() => handleRequestClick(plan.name, "yearly", plan.yearlyPrice)}
                   disabled={processing !== null}
                 >
-                  {processing === `${plan.name.toLowerCase()}-yearly` ? "Submitting..." : "Request Yearly Plan"}
+                  {processing === `${plan.name.toLowerCase()}-yearly` ? "Submitting..." : "Request Yearly"}
                 </Button>
               </div>
             </CardContent>
