@@ -9,6 +9,8 @@ import Onboarding from "./pages/Onboarding";
 import MainLayout from "./components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import SuperAdminLogin from "./pages/SuperAdminLogin";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Students from "./pages/Students";
 import FeeStructure from "./pages/FeeStructure";
 import Payments from "./pages/Payments";
@@ -31,6 +33,8 @@ const App = () => (
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/superadmin-login" element={<SuperAdminLogin />} />
+            <Route path="/superadmin" element={<SuperAdminDashboard />} />
             <Route element={<MainLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/admin-dashboard" element={<AdminDashboard />} />
