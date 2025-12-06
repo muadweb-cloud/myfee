@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Receipt } from "lucide-react";
+import { Plus, Search, Receipt, Pencil } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
 
@@ -48,11 +48,19 @@ const Payments = () => {
   const [totalPaid, setTotalPaid] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
     student_id: "",
+    amount: "",
+    payment_method: "Cash",
+    notes: "",
+  });
+
+  const [editFormData, setEditFormData] = useState({
     amount: "",
     payment_method: "Cash",
     notes: "",
@@ -214,6 +222,66 @@ const Payments = () => {
       payment_method: "Cash",
       notes: "",
     });
+  };
+
+  const openEditDialog = (payment: Payment) => {
+    setEditingPayment(payment);
+    setEditFormData({
+      amount: payment.amount.toString(),
+      payment_method: payment.payment_method,
+      notes: payment.notes || "",
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const closeEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingPayment(null);
+    setEditFormData({
+      amount: "",
+      payment_method: "Cash",
+      notes: "",
+    });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!editingPayment) return;
+
+    const amount = parseFloat(editFormData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid amount",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("payments")
+      .update({
+        amount: amount,
+        payment_method: editFormData.payment_method,
+        notes: editFormData.notes || null,
+      })
+      .eq("id", editingPayment.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Payment updated successfully",
+      });
+      fetchPayments();
+      closeEditDialog();
+    }
   };
 
   const filteredPayments = payments.filter((payment) =>
@@ -386,6 +454,7 @@ const Payments = () => {
                   <TableHead>Method</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -402,6 +471,11 @@ const Payments = () => {
                     <TableCell>{payment.payment_method}</TableCell>
                     <TableCell>{formatDate(payment.payment_date)}</TableCell>
                     <TableCell className="max-w-xs truncate">{payment.notes || "—"}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(payment)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -409,6 +483,70 @@ const Payments = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Payment Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Payment</DialogTitle>
+            <DialogDescription>
+              Update payment details for {editingPayment?.student_name}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_amount">Amount (Ksh) *</Label>
+                <Input
+                  id="edit_amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={editFormData.amount}
+                  onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit_payment_method">Payment Method</Label>
+                <Select value={editFormData.payment_method} onValueChange={(value) => setEditFormData({ ...editFormData, payment_method: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Cash">Cash</SelectItem>
+                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="Mobile Money">Mobile Money</SelectItem>
+                    <SelectItem value="Cheque">Cheque</SelectItem>
+                    <SelectItem value="Card">Card</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit_notes">Notes</Label>
+                <Textarea
+                  id="edit_notes"
+                  placeholder="Optional payment notes"
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                  rows={2}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeEditDialog}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
