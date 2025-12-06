@@ -7,8 +7,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
-  signInWithGoogle: () => Promise<{ error: any }>;
+  signUp: (email: string, password: string, schoolName: string, schoolAddress?: string, schoolPhone?: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   loading: boolean;
   needsOnboarding: boolean;
@@ -96,7 +95,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, schoolName: string, schoolAddress?: string, schoolPhone?: string) => {
     const redirectUrl = `${window.location.origin}/`;
     
     const { error } = await supabase.auth.signUp({
@@ -105,7 +104,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       options: {
         emailRedirectTo: redirectUrl,
         data: {
-          full_name: fullName
+          school_name: schoolName,
+          school_address: schoolAddress || null,
+          school_phone: schoolPhone || null
         }
       }
     });
@@ -120,22 +121,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return { error };
   };
 
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      }
-    });
-    return { error };
-  };
-
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, signIn, signUp, signInWithGoogle, signOut, loading, needsOnboarding }}>
+    <AuthContext.Provider value={{ user, session, signIn, signUp, signOut, loading, needsOnboarding }}>
       {children}
     </AuthContext.Provider>
   );
