@@ -29,12 +29,21 @@ interface Student {
   admission_no: string;
   full_name: string;
   total_fee: number;
+  class_id: string | null;
+}
+
+interface FeeClass {
+  id: string;
+  class_name: string;
 }
 
 const Payments = () => {
   const { schoolId } = useSchoolId();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<FeeClass[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string>("");
+  const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [totalPaid, setTotalPaid] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,21 +62,46 @@ const Payments = () => {
     if (schoolId) {
       fetchPayments();
       fetchStudents();
+      fetchClasses();
     }
   }, [schoolId]);
+
+  const fetchClasses = async () => {
+    if (!schoolId) return;
+    
+    const { data, error } = await supabase
+      .from("fee_structures")
+      .select("id, class_name")
+      .eq("school_id", schoolId)
+      .order("class_name");
+
+    if (!error && data) {
+      setClasses(data);
+    }
+  };
 
   const fetchStudents = async () => {
     if (!schoolId) return;
     
     const { data, error } = await supabase
       .from("students")
-      .select("*")
+      .select("id, admission_no, full_name, total_fee, class_id")
       .eq("school_id", schoolId)
       .order("full_name");
 
     if (!error && data) {
       setStudents(data);
     }
+  };
+
+  const handleClassChange = (classId: string) => {
+    setSelectedClass(classId);
+    setFormData({ ...formData, student_id: "" });
+    setSelectedStudent(null);
+    setTotalPaid(0);
+    
+    const studentsInClass = students.filter(s => s.class_id === classId);
+    setFilteredStudents(studentsInClass);
   };
 
   const fetchPayments = async () => {
@@ -171,6 +205,8 @@ const Payments = () => {
   const closeDialog = () => {
     setIsDialogOpen(false);
     setSelectedStudent(null);
+    setSelectedClass("");
+    setFilteredStudents([]);
     setTotalPaid(0);
     setFormData({
       student_id: "",
@@ -209,13 +245,33 @@ const Payments = () => {
             <form onSubmit={handleSubmit}>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="student_id">Student *</Label>
-                  <Select value={formData.student_id} onValueChange={handleStudentChange}>
+                  <Label htmlFor="class_id">Class *</Label>
+                  <Select value={selectedClass} onValueChange={handleClassChange}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a student" />
+                      <SelectValue placeholder="Select a class first" />
                     </SelectTrigger>
                     <SelectContent>
-                      {students.map((student) => (
+                      {classes.map((cls) => (
+                        <SelectItem key={cls.id} value={cls.id}>
+                          {cls.class_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="student_id">Student *</Label>
+                  <Select 
+                    value={formData.student_id} 
+                    onValueChange={handleStudentChange}
+                    disabled={!selectedClass}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={selectedClass ? "Select a student" : "Select a class first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredStudents.map((student) => (
                         <SelectItem key={student.id} value={student.id}>
                           {student.admission_no} - {student.full_name}
                         </SelectItem>
