@@ -262,8 +262,8 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">{stats.totalStudents.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-foreground whitespace-nowrap overflow-hidden text-ellipsis">{stats.totalStudents.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
               {subscription ? `of ${subscription.maxStudents.toLocaleString()} max capacity` : 'Enrolled students'}
             </p>
           </CardContent>
@@ -277,7 +277,7 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">{formatCurrency(stats.totalExpectedFees)}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-foreground whitespace-nowrap overflow-hidden text-ellipsis">{formatCurrency(stats.totalExpectedFees)}</div>
             <p className="text-xs text-muted-foreground mt-1">Total expected revenue</p>
           </CardContent>
         </Card>
@@ -290,8 +290,8 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.totalCollectedFees)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 whitespace-nowrap overflow-hidden text-ellipsis">{formatCurrency(stats.totalCollectedFees)}</div>
+            <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
               <span className="text-green-600 dark:text-green-400 font-medium">{collectionPercentage}%</span> of expected fees
             </p>
           </CardContent>
@@ -305,7 +305,7 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">{formatCurrency(stats.totalBalance)}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap overflow-hidden text-ellipsis">{formatCurrency(stats.totalBalance)}</div>
             <p className="text-xs text-muted-foreground mt-1">Pending collection</p>
           </CardContent>
         </Card>
