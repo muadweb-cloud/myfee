@@ -10,6 +10,7 @@ interface SubscriptionStatus {
   planType: string;
   schoolId: string;
   nextPaymentDate?: string;
+  expiryDate?: string;
 }
 
 export const useSubscription = () => {
@@ -58,7 +59,8 @@ export const useSubscription = () => {
             maxStudents: school.max_students,
             planType: school.plan_type,
             schoolId: school.id,
-            nextPaymentDate: school.next_payment_date
+            nextPaymentDate: school.next_payment_date,
+            expiryDate: school.next_payment_date || school.trial_end
           });
 
           // Check if subscription expired and redirect to billing

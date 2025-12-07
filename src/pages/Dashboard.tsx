@@ -2,12 +2,13 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, DollarSign, TrendingUp, AlertCircle, Calendar, Target } from "lucide-react";
+import { Users, DollarSign, TrendingUp, AlertCircle, Calendar, Target, CalendarClock } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import appIcon from "@/assets/app-icon.png";
 
 interface DashboardStats {
   totalStudents: number;
@@ -214,25 +215,36 @@ const Dashboard = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">{schoolName || "Dashboard"}</h1>
-          <p className="text-muted-foreground">Welcome back! Here's your school's financial overview</p>
+        <div className="flex items-center gap-4">
+          <img src={appIcon} alt="School Fee System" className="h-12 w-12 object-contain" />
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">{schoolName || "Dashboard"}</h1>
+            <p className="text-muted-foreground">Welcome back! Here's your school's financial overview</p>
+          </div>
         </div>
         
         {subscription && (
-          <Card className="w-full sm:w-auto border-primary/20">
+          <Card className={`w-full sm:w-auto ${subscription.status === 'active' ? 'border-green-500 bg-green-50 dark:bg-green-950/30' : 'border-primary/20'}`}>
             <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-3">
-                <Badge 
-                  variant={subscription.status === 'active' ? 'default' : subscription.status === 'trial' ? 'secondary' : 'destructive'}
-                  className="text-xs"
-                >
-                  {subscription.status.toUpperCase()}
-                </Badge>
-                {subscription.status === 'trial' && (
-                  <span className="text-xs text-muted-foreground">
-                    {subscription.trialDaysRemaining} days left
-                  </span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <Badge 
+                    variant={subscription.status === 'active' ? 'default' : subscription.status === 'trial' ? 'secondary' : 'destructive'}
+                    className={`text-xs ${subscription.status === 'active' ? 'bg-green-500 hover:bg-green-600' : ''}`}
+                  >
+                    {subscription.status.toUpperCase()}
+                  </Badge>
+                  {subscription.status === 'trial' && (
+                    <span className="text-xs text-muted-foreground">
+                      {subscription.trialDaysRemaining} days left
+                    </span>
+                  )}
+                </div>
+                {subscription.status === 'active' && subscription.expiryDate && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CalendarClock className="h-3 w-3" />
+                    <span>Expires: {new Date(subscription.expiryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  </div>
                 )}
               </div>
             </CardContent>
