@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { GraduationCap } from "lucide-react";
+import appIcon from "@/assets/app-icon.png";
 
 const Auth = () => {
   const { signIn, signUp } = useAuth();
@@ -108,9 +108,7 @@ const Auth = () => {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center space-y-2">
           <div className="flex justify-center mb-2">
-            <div className="bg-primary/10 p-3 rounded-full">
-              <GraduationCap className="h-8 w-8 text-primary" />
-            </div>
+            <img src={appIcon} alt="School Fee System" className="h-16 w-16 object-contain" />
           </div>
           <CardTitle className="text-2xl">School Fee System</CardTitle>
           <CardDescription>Admin Portal - Manage your school's finances</CardDescription>
