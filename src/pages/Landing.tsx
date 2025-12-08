@@ -3,42 +3,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, DollarSign, BarChart3, Shield, ArrowRight, CheckCircle } from "lucide-react";
 import appIcon from "@/assets/app-icon.png";
-
 const Landing = () => {
-  const features = [
-    {
-      icon: Users,
-      title: "Student Management",
-      description: "Easily manage student records, enrollment, and fee assignments in one place."
-    },
-    {
-      icon: DollarSign,
-      title: "Fee Collection",
-      description: "Track payments, generate receipts, and monitor outstanding balances effortlessly."
-    },
-    {
-      icon: BarChart3,
-      title: "Financial Reports",
-      description: "Get detailed insights with monthly reports, analytics, and collection trends."
-    },
-    {
-      icon: Shield,
-      title: "Secure & Reliable",
-      description: "Your data is protected with enterprise-grade security and regular backups."
-    }
-  ];
-
-  const benefits = [
-    "Real-time dashboard with financial overview",
-    "Monthly target tracking and progress",
-    "Automated fee structure management",
-    "Payment history and receipt generation",
-    "Multi-class fee configuration",
-    "Subscription-based flexible plans"
-  ];
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/10">
+  const features = [{
+    icon: Users,
+    title: "Student Management",
+    description: "Easily manage student records, enrollment, and fee assignments in one place."
+  }, {
+    icon: DollarSign,
+    title: "Fee Collection",
+    description: "Track payments, generate receipts, and monitor outstanding balances effortlessly."
+  }, {
+    icon: BarChart3,
+    title: "Financial Reports",
+    description: "Get detailed insights with monthly reports, analytics, and collection trends."
+  }, {
+    icon: Shield,
+    title: "Secure & Reliable",
+    description: "Your data is protected with enterprise-grade security and regular backups."
+  }];
+  const benefits = ["Real-time dashboard with financial overview", "Monthly target tracking and progress", "Automated fee structure management", "Payment history and receipt generation", "Multi-class fee configuration", "Subscription-based flexible plans"];
+  return <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/10">
       {/* Header */}
       <header className="container mx-auto px-4 py-6">
         <nav className="flex items-center justify-between">
@@ -86,7 +70,7 @@ const Landing = () => {
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>14-day free trial</span>
+                <span>7-day free trial</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
@@ -155,8 +139,7 @@ const Landing = () => {
           </p>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((feature, index) => (
-            <Card key={index} className="group hover:shadow-lg transition-shadow">
+          {features.map((feature, index) => <Card key={index} className="group hover:shadow-lg transition-shadow">
               <CardContent className="pt-6">
                 <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4 group-hover:bg-primary/20 transition-colors">
                   <feature.icon className="h-6 w-6 text-primary" />
@@ -164,8 +147,7 @@ const Landing = () => {
                 <h3 className="font-semibold text-foreground mb-2">{feature.title}</h3>
                 <p className="text-sm text-muted-foreground">{feature.description}</p>
               </CardContent>
-            </Card>
-          ))}
+            </Card>)}
         </div>
       </section>
 
@@ -181,12 +163,10 @@ const Landing = () => {
                 Join hundreds of schools that have streamlined their fee management process with our platform.
               </p>
               <div className="grid sm:grid-cols-2 gap-4">
-                {benefits.map((benefit, index) => (
-                  <div key={index} className="flex items-center gap-3">
+                {benefits.map((benefit, index) => <div key={index} className="flex items-center gap-3">
                     <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                     <span className="text-sm text-foreground">{benefit}</span>
-                  </div>
-                ))}
+                  </div>)}
               </div>
             </div>
             <div className="flex justify-center">
@@ -201,7 +181,7 @@ const Landing = () => {
         <div className="text-center space-y-6">
           <h2 className="text-3xl font-bold text-foreground">Ready to Get Started?</h2>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Start your 14-day free trial today and experience the difference in fee management.
+            Start your 7-day free trial today and experience the difference in fee management.
           </p>
           <Link to="/auth">
             <Button size="lg" className="gap-2">
@@ -225,8 +205,6 @@ const Landing = () => {
           </div>
         </div>
       </footer>
-    </div>
-  );
+    </div>;
 };
-
 export default Landing;
