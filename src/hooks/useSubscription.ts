@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface SubscriptionStatus {
   status: 'trial' | 'active' | 'expired';
@@ -11,11 +11,14 @@ interface SubscriptionStatus {
   schoolId: string;
   nextPaymentDate?: string;
   expiryDate?: string;
+  daysUntilExpiry?: number;
+  showExpiryWarning?: boolean;
 }
 
 export const useSubscription = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -53,6 +56,17 @@ export const useSubscription = () => {
           const hoursRemaining = (trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60);
           const daysRemaining = Math.max(0, Math.floor(hoursRemaining / 24));
 
+          // Calculate days until subscription expiry for active subscriptions
+          let daysUntilExpiry = 0;
+          let showExpiryWarning = false;
+          
+          if (school.subscription_status === 'active' && school.next_payment_date) {
+            const expiryDate = new Date(school.next_payment_date);
+            const expiryHoursRemaining = (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+            daysUntilExpiry = Math.max(0, Math.ceil(expiryHoursRemaining / 24));
+            showExpiryWarning = daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+          }
+
           setSubscription({
             status: school.subscription_status as 'trial' | 'active' | 'expired',
             trialDaysRemaining: daysRemaining,
@@ -60,13 +74,15 @@ export const useSubscription = () => {
             planType: school.plan_type,
             schoolId: school.id,
             nextPaymentDate: school.next_payment_date,
-            expiryDate: school.next_payment_date || school.trial_end
+            expiryDate: school.next_payment_date || school.trial_end,
+            daysUntilExpiry,
+            showExpiryWarning
           });
 
-          // Check if subscription expired and redirect to billing
+          // Check if subscription expired and redirect to billing (only for non-billing pages)
           if (school.subscription_status === 'expired') {
-            const currentPath = window.location.pathname;
-            if (currentPath !== '/billing' && currentPath !== '/auth') {
+            const currentPath = location.pathname;
+            if (currentPath !== '/billing' && currentPath !== '/auth' && !currentPath.startsWith('/superadmin')) {
               navigate('/billing');
             }
           }
@@ -79,7 +95,7 @@ export const useSubscription = () => {
     };
 
     checkSubscription();
-  }, [user, navigate]);
+  }, [user, navigate, location.pathname]);
 
   return { subscription, loading };
 };

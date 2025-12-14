@@ -5,13 +5,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { MessageCircle, Mail } from "lucide-react";
 import appIcon from "@/assets/app-icon.png";
+
+const CONTACT_EMAIL = "schoolfeesystem@gmail.com";
+const CONTACT_WHATSAPP = "+255 123 456 789";
 
 const Auth = () => {
   const { signIn, signUp } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   
   const [loginData, setLoginData] = useState({
     email: "",
@@ -52,7 +58,8 @@ const Auth = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!signupData.email || !signupData.password || !signupData.confirmPassword || !signupData.schoolName) {
+    // All fields are now required
+    if (!signupData.email || !signupData.password || !signupData.confirmPassword || !signupData.schoolName || !signupData.schoolAddress || !signupData.schoolPhone) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -147,6 +154,15 @@ const Auth = () => {
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Signing in..." : "Sign In"}
                 </Button>
+                <div className="text-center">
+                  <button 
+                    type="button"
+                    onClick={() => setForgotPasswordOpen(true)}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
               </form>
             </TabsContent>
             
@@ -197,23 +213,25 @@ const Auth = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-school-address">School Address</Label>
+                  <Label htmlFor="signup-school-address">School Address *</Label>
                   <Input 
                     id="signup-school-address" 
                     type="text" 
                     placeholder="123 Education Street, City" 
                     value={signupData.schoolAddress} 
                     onChange={e => setSignupData({ ...signupData, schoolAddress: e.target.value })} 
+                    required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-school-phone">Phone Number</Label>
+                  <Label htmlFor="signup-school-phone">Phone Number *</Label>
                   <Input 
                     id="signup-school-phone" 
                     type="tel" 
                     placeholder="+254 700 000 000" 
                     value={signupData.schoolPhone} 
                     onChange={e => setSignupData({ ...signupData, schoolPhone: e.target.value })} 
+                    required
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
@@ -224,6 +242,46 @@ const Auth = () => {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Forgot Password Dialog */}
+      <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Forgot Password</DialogTitle>
+            <DialogDescription>
+              Please contact the developer to recover your password.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <MessageCircle className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="text-sm font-medium">WhatsApp</p>
+                <a 
+                  href={`https://wa.me/${CONTACT_WHATSAPP.replace(/[^0-9+]/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-primary hover:underline"
+                >
+                  {CONTACT_WHATSAPP}
+                </a>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <Mail className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Email</p>
+                <a 
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {CONTACT_EMAIL}
+                </a>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
