@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +10,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from "@/hooks/use-toast";
 import { MessageCircle, Mail } from "lucide-react";
 import appIcon from "@/assets/app-icon.png";
+import { supabase } from "@/integrations/supabase/client";
 
 const CONTACT_EMAIL = "schoolfeesystem@gmail.com";
 const CONTACT_WHATSAPP = "+255 123 456 789";
 
 const Auth = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, signUp } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +36,13 @@ const Auth = () => {
     schoolAddress: "",
     schoolPhone: ""
   });
+
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [isResetLoading, setIsResetLoading] = useState(false);
+
+  const searchParams = new URLSearchParams(location.search);
+  const isRecoveryMode = searchParams.get("type") === "recovery";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +118,57 @@ const Auth = () => {
         title: "Success",
         description: "Account created successfully!"
       });
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!resetPassword || !resetConfirmPassword) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (resetPassword !== resetConfirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (resetPassword.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsResetLoading(true);
+    const { error } = await supabase.auth.updateUser({
+      password: resetPassword,
+    });
+    setIsResetLoading(false);
+
+    if (error) {
+      toast({
+        title: "Reset Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Password Updated",
+        description: "Your password has been changed successfully.",
+      });
+      navigate("/dashboard");
     }
   };
 

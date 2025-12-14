@@ -299,6 +299,25 @@ const SuperAdminDashboard = () => {
     }));
   };
 
+  const handleSendResetLink = async (email: string) => {
+    try {
+      const redirectTo = `${window.location.origin}/auth?type=recovery`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+
+      if (error) {
+        console.error("Error sending reset link:", error);
+        toast.error("Failed to send reset link");
+      } else {
+        toast.success("Password reset link sent to user's email");
+      }
+    } catch (err) {
+      console.error("Unexpected error sending reset link:", err);
+      toast.error("Something went wrong while sending reset link");
+    }
+  };
+
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case "active":
@@ -569,15 +588,26 @@ const SuperAdminDashboard = () => {
                             {u.created_at ? format(new Date(u.created_at), "MMM dd, yyyy") : "-"}
                           </TableCell>
                           <TableCell>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => { setSelectedUser(u); setDeleteUserDialogOpen(true); }}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                            >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Remove
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleSendResetLink(u.email)}
+                                className="border-slate-600 text-slate-200 hover:bg-slate-700"
+                              >
+                                <Key className="w-3 h-3 mr-1" />
+                                Reset
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => { setSelectedUser(u); setDeleteUserDialogOpen(true); }}
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              >
+                                <Trash2 className="w-3 h-3 mr-1" />
+                                Remove
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
