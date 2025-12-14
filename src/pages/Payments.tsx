@@ -8,10 +8,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Receipt, Pencil } from "lucide-react";
+import { Plus, Search, Receipt, Pencil, Download, FileText, FileSpreadsheet } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Payment {
   id: string;
@@ -289,6 +292,69 @@ const Payments = () => {
     payment.receipt_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const downloadCSV = () => {
+    const headers = ['Receipt No', 'Student Name', 'Amount', 'Payment Method', 'Date', 'Notes'];
+    const csvData = filteredPayments.map(payment => [
+      payment.receipt_number,
+      payment.student_name,
+      payment.amount.toString(),
+      payment.payment_method,
+      formatDate(payment.payment_date),
+      payment.notes || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `payments_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    
+    toast({
+      title: "Success",
+      description: "Payments exported to CSV successfully"
+    });
+  };
+
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(18);
+    doc.text('Payment History Report', 14, 22);
+    doc.setFontSize(11);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
+    
+    // Prepare table data
+    const tableData = filteredPayments.map(payment => [
+      payment.receipt_number,
+      payment.student_name || 'N/A',
+      formatCurrency(payment.amount),
+      payment.payment_method,
+      formatDate(payment.payment_date),
+      payment.notes || '-'
+    ]);
+
+    autoTable(doc, {
+      head: [['Receipt No', 'Student', 'Amount', 'Method', 'Date', 'Notes']],
+      body: tableData,
+      startY: 38,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [59, 130, 246] },
+    });
+
+    doc.save(`payments_${new Date().toISOString().split('T')[0]}.pdf`);
+    
+    toast({
+      title: "Success",
+      description: "Payments exported to PDF successfully"
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -296,13 +362,32 @@ const Payments = () => {
           <h1 className="text-3xl font-bold">Payment Management</h1>
           <p className="text-muted-foreground">Record and track student fee payments</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Record Payment
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={downloadCSV}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Download as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={downloadPDF}>
+                <FileText className="h-4 w-4 mr-2" />
+                Download as PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Record Payment
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Record New Payment</DialogTitle>

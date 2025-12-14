@@ -10,8 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Shield, Building2, Users, CreditCard, Calendar, Settings, LogOut, Loader2, CheckCircle, XCircle, Clock, Trash2 } from "lucide-react";
+import { Shield, Building2, Users, CreditCard, Calendar, Settings, LogOut, Loader2, CheckCircle, XCircle, Clock, Trash2, Mail, Key, Eye, EyeOff } from "lucide-react";
 import { format, addDays, addMonths } from "date-fns";
 
 interface School {
@@ -29,6 +30,14 @@ interface School {
   created_at: string | null;
 }
 
+interface UserWithPassword {
+  id: string;
+  email: string;
+  password: string; // Note: This is the plaintext password stored during registration
+  school_name: string;
+  created_at: string;
+}
+
 interface SchoolStats {
   totalSchools: number;
   activeSchools: number;
@@ -40,14 +49,18 @@ const SuperAdminDashboard = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
+  const [users, setUsers] = useState<UserWithPassword[]>([]);
   const [stats, setStats] = useState<SchoolStats>({ totalSchools: 0, activeSchools: 0, trialSchools: 0, expiredSchools: 0 });
   const [loading, setLoading] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   
   // Dialog states
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserWithPassword | null>(null);
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
   
   // Form states
   const [planType, setPlanType] = useState("small");
@@ -81,6 +94,7 @@ const SuperAdminDashboard = () => {
 
     setIsSuperAdmin(true);
     fetchSchools();
+    fetchUsers();
   };
 
   const fetchSchools = async () => {
@@ -98,6 +112,36 @@ const SuperAdminDashboard = () => {
       calculateStats(data || []);
     }
     setLoading(false);
+  };
+
+  const fetchUsers = async () => {
+    // Fetch admin profiles with their school info
+    const { data: profiles, error } = await supabase
+      .from("admin_profiles")
+      .select(`
+        id,
+        email,
+        created_at,
+        schools (school_name)
+      `)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching users:", error);
+      return;
+    }
+
+    // For now, we'll show the email as password is not stored in plain text
+    // In a real app, passwords should NEVER be stored or displayed in plain text
+    const formattedUsers: UserWithPassword[] = (profiles || []).map((profile: any) => ({
+      id: profile.id,
+      email: profile.email,
+      password: "Contact user for password reset", // Passwords are hashed and cannot be retrieved
+      school_name: profile.schools?.school_name || "N/A",
+      created_at: profile.created_at
+    }));
+
+    setUsers(formattedUsers);
   };
 
   const calculateStats = (schoolsData: School[]) => {
@@ -207,8 +251,52 @@ const SuperAdminDashboard = () => {
       toast.success("School deleted successfully");
       setDeleteDialogOpen(false);
       fetchSchools();
+      fetchUsers();
     }
     setActionLoading(false);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    setActionLoading(true);
+
+    try {
+      // First, get the admin profile to find associated school
+      const { data: profile } = await supabase
+        .from("admin_profiles")
+        .select("school_id")
+        .eq("id", selectedUser.id)
+        .single();
+
+      if (profile?.school_id) {
+        // Delete all associated data
+        await supabase.from("payments").delete().eq("school_id", profile.school_id);
+        await supabase.from("students").delete().eq("school_id", profile.school_id);
+        await supabase.from("fee_structures").delete().eq("school_id", profile.school_id);
+        await supabase.from("billing").delete().eq("school_id", profile.school_id);
+        await supabase.from("school_settings").delete().eq("school_id", profile.school_id);
+        await supabase.from("user_roles").delete().eq("user_id", selectedUser.id);
+        await supabase.from("admin_profiles").delete().eq("id", selectedUser.id);
+        await supabase.from("schools").delete().eq("id", profile.school_id);
+      }
+
+      toast.success("User and associated data deleted successfully");
+      setDeleteUserDialogOpen(false);
+      fetchSchools();
+      fetchUsers();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      toast.error("Failed to delete user completely");
+    }
+    
+    setActionLoading(false);
+  };
+
+  const togglePasswordVisibility = (userId: string) => {
+    setShowPasswords(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }));
   };
 
   const getStatusBadge = (status: string | null) => {
@@ -315,98 +403,198 @@ const SuperAdminDashboard = () => {
           </Card>
         </div>
 
-        {/* Schools Table */}
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Building2 className="w-5 h-5" />
-              All Schools
-            </CardTitle>
-            <CardDescription className="text-slate-400">
-              Manage school subscriptions, plans, and access
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-slate-700 hover:bg-slate-700/50">
-                    <TableHead className="text-slate-300">School Name</TableHead>
-                    <TableHead className="text-slate-300">Email</TableHead>
-                    <TableHead className="text-slate-300">Status</TableHead>
-                    <TableHead className="text-slate-300">Plan</TableHead>
-                    <TableHead className="text-slate-300">Max Students</TableHead>
-                    <TableHead className="text-slate-300">Next Payment</TableHead>
-                    <TableHead className="text-slate-300">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {schools.map((school) => (
-                    <TableRow key={school.id} className="border-slate-700 hover:bg-slate-700/30">
-                      <TableCell className="text-white font-medium">{school.school_name}</TableCell>
-                      <TableCell className="text-slate-300">{school.school_email || "-"}</TableCell>
-                      <TableCell>{getStatusBadge(school.subscription_status)}</TableCell>
-                      <TableCell className="text-slate-300 capitalize">{school.plan_type || "-"}</TableCell>
-                      <TableCell className="text-slate-300">{school.max_students || "-"}</TableCell>
-                      <TableCell className="text-slate-300">
-                        {school.next_payment_date 
-                          ? format(new Date(school.next_payment_date), "MMM dd, yyyy")
-                          : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={() => openManageDialog(school)}
-                            className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                          >
-                            <Settings className="w-3 h-3 mr-1" />
-                            Manage
-                          </Button>
-                          {school.subscription_status !== "active" ? (
+        {/* Tabs for Schools and Users */}
+        <Tabs defaultValue="schools" className="space-y-4">
+          <TabsList className="bg-slate-800 border-slate-700">
+            <TabsTrigger value="schools" className="data-[state=active]:bg-slate-700">
+              <Building2 className="w-4 h-4 mr-2" />
+              Schools
+            </TabsTrigger>
+            <TabsTrigger value="users" className="data-[state=active]:bg-slate-700">
+              <Users className="w-4 h-4 mr-2" />
+              Users
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="schools">
+            {/* Schools Table */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  All Schools
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Manage school subscriptions, plans, and access
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700 hover:bg-slate-700/50">
+                        <TableHead className="text-slate-300">School Name</TableHead>
+                        <TableHead className="text-slate-300">Email</TableHead>
+                        <TableHead className="text-slate-300">Status</TableHead>
+                        <TableHead className="text-slate-300">Plan</TableHead>
+                        <TableHead className="text-slate-300">Max Students</TableHead>
+                        <TableHead className="text-slate-300">Next Payment</TableHead>
+                        <TableHead className="text-slate-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {schools.map((school) => (
+                        <TableRow key={school.id} className="border-slate-700 hover:bg-slate-700/30">
+                          <TableCell className="text-white font-medium">{school.school_name}</TableCell>
+                          <TableCell className="text-slate-300">{school.school_email || "-"}</TableCell>
+                          <TableCell>{getStatusBadge(school.subscription_status)}</TableCell>
+                          <TableCell className="text-slate-300 capitalize">{school.plan_type || "-"}</TableCell>
+                          <TableCell className="text-slate-300">{school.max_students || "-"}</TableCell>
+                          <TableCell className="text-slate-300">
+                            {school.next_payment_date 
+                              ? format(new Date(school.next_payment_date), "MMM dd, yyyy")
+                              : "-"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => openManageDialog(school)}
+                                className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                              >
+                                <Settings className="w-3 h-3 mr-1" />
+                                Manage
+                              </Button>
+                              {school.subscription_status !== "active" ? (
+                                <Button 
+                                  size="sm" 
+                                  onClick={() => handleActivateSchool(school)}
+                                  className="bg-green-600 hover:bg-green-700"
+                                >
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Activate
+                                </Button>
+                              ) : (
+                                <Button 
+                                  size="sm" 
+                                  variant="destructive"
+                                  onClick={() => handleDeactivateSchool(school)}
+                                >
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Deactivate
+                                </Button>
+                              )}
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => { setSelectedSchool(school); setDeleteDialogOpen(true); }}
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {schools.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-slate-400 py-8">
+                            No schools registered yet
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="users">
+            {/* Users Table */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  All Users
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  View user credentials and manage user accounts
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700 hover:bg-slate-700/50">
+                        <TableHead className="text-slate-300">Email</TableHead>
+                        <TableHead className="text-slate-300">Password</TableHead>
+                        <TableHead className="text-slate-300">School</TableHead>
+                        <TableHead className="text-slate-300">Registered</TableHead>
+                        <TableHead className="text-slate-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((u) => (
+                        <TableRow key={u.id} className="border-slate-700 hover:bg-slate-700/30">
+                          <TableCell className="text-white font-medium">
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-4 h-4 text-slate-400" />
+                              {u.email}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-slate-300">
+                            <div className="flex items-center gap-2">
+                              <Key className="w-4 h-4 text-slate-400" />
+                              <span className="font-mono text-xs">
+                                {showPasswords[u.id] ? u.password : "••••••••"}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => togglePasswordVisibility(u.id)}
+                                className="h-6 w-6 p-0"
+                              >
+                                {showPasswords[u.id] ? (
+                                  <EyeOff className="w-3 h-3" />
+                                ) : (
+                                  <Eye className="w-3 h-3" />
+                                )}
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-slate-300">{u.school_name}</TableCell>
+                          <TableCell className="text-slate-300">
+                            {u.created_at ? format(new Date(u.created_at), "MMM dd, yyyy") : "-"}
+                          </TableCell>
+                          <TableCell>
                             <Button 
                               size="sm" 
-                              onClick={() => handleActivateSchool(school)}
-                              className="bg-green-600 hover:bg-green-700"
+                              variant="ghost"
+                              onClick={() => { setSelectedUser(u); setDeleteUserDialogOpen(true); }}
+                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                             >
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Activate
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Remove
                             </Button>
-                          ) : (
-                            <Button 
-                              size="sm" 
-                              variant="destructive"
-                              onClick={() => handleDeactivateSchool(school)}
-                            >
-                              <XCircle className="w-3 h-3 mr-1" />
-                              Deactivate
-                            </Button>
-                          )}
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => { setSelectedSchool(school); setDeleteDialogOpen(true); }}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {schools.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-slate-400 py-8">
-                        No schools registered yet
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {users.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-slate-400 py-8">
+                            No users registered yet
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Manage Dialog */}
@@ -485,7 +673,7 @@ const SuperAdminDashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete School Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
@@ -501,6 +689,27 @@ const SuperAdminDashboard = () => {
             <Button variant="destructive" onClick={handleDeleteSchool} disabled={actionLoading}>
               {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Delete School
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      <Dialog open={deleteUserDialogOpen} onOpenChange={setDeleteUserDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-red-400">Remove User</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Are you sure you want to remove {selectedUser?.email}? This action cannot be undone and will remove the user and all associated data including their school, students, payments, and fee structures.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteUserDialogOpen(false)} className="border-slate-600">
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={actionLoading}>
+              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Remove User
             </Button>
           </DialogFooter>
         </DialogContent>

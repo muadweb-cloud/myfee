@@ -14,7 +14,6 @@ interface SchoolSettings {
   school_address: string | null;
   school_phone: string | null;
   school_email: string | null;
-  monthly_target: number;
 }
 
 const Settings = () => {
@@ -33,7 +32,6 @@ const Settings = () => {
     school_address: "",
     school_phone: "",
     school_email: "",
-    monthly_target: 0,
   });
 
   useEffect(() => {
@@ -55,7 +53,7 @@ const Settings = () => {
     // Get school data
     const { data } = await supabase
       .from("schools")
-      .select("id, school_name, school_address, school_phone, school_email, monthly_target")
+      .select("id, school_name, school_address, school_phone, school_email")
       .eq("id", profile.school_id)
       .single();
 
@@ -66,7 +64,6 @@ const Settings = () => {
         school_address: data.school_address || "",
         school_phone: data.school_phone || "",
         school_email: data.school_email || "",
-        monthly_target: data.monthly_target || 0,
       });
     }
   };
@@ -127,7 +124,6 @@ const Settings = () => {
         school_address: schoolData.school_address || null,
         school_phone: schoolData.school_phone || null,
         school_email: schoolData.school_email || null,
-        monthly_target: schoolData.monthly_target,
       })
       .eq("id", schoolSettings.id);
 
@@ -245,18 +241,6 @@ const Settings = () => {
                 type="email"
                 value={schoolData.school_email}
                 onChange={(e) => setSchoolData({ ...schoolData, school_email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="monthly_target">Monthly Collection Target (Ksh)</Label>
-              <Input
-                id="monthly_target"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={schoolData.monthly_target}
-                onChange={(e) => setSchoolData({ ...schoolData, monthly_target: parseFloat(e.target.value) || 0 })}
               />
             </div>
             <Button type="submit" disabled={loading}>

@@ -8,7 +8,11 @@ import { useSchoolId } from "@/hooks/useSchoolId";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import appIcon from "@/assets/app-icon.png";
+import SubscriptionExpiryWarning from "@/components/SubscriptionExpiryWarning";
+import TargetSettingDialog from "@/components/TargetSettingDialog";
+
 interface DashboardStats {
   totalStudents: number;
   totalExpectedFees: number;
@@ -46,6 +50,8 @@ const Dashboard = () => {
   const [monthlyTarget, setMonthlyTarget] = useState(0);
   const [schoolName, setSchoolName] = useState("");
   const [currentMonthCollected, setCurrentMonthCollected] = useState(0);
+  const [targetDialogOpen, setTargetDialogOpen] = useState(false);
+  
   useEffect(() => {
     if (schoolId) {
       fetchDashboardData();
@@ -280,6 +286,24 @@ const Dashboard = () => {
         </Card>
       </div>
 
+      {/* Subscription Expiry Warning Popup */}
+      {subscription?.showExpiryWarning && (
+        <SubscriptionExpiryWarning 
+          daysRemaining={subscription.daysUntilExpiry || 0} 
+          show={subscription.showExpiryWarning} 
+        />
+      )}
+
+      {/* Target Setting Dialog */}
+      <TargetSettingDialog
+        open={targetDialogOpen}
+        onOpenChange={setTargetDialogOpen}
+        schoolId={schoolId || ''}
+        currentTarget={monthlyTarget}
+        expectedFees={stats.totalExpectedFees}
+        onTargetUpdated={fetchDashboardData}
+      />
+
       {/* Monthly Target Progress - Uses current month's collection */}
       <Card>
         <CardHeader className="pb-3">
@@ -293,9 +317,14 @@ const Dashboard = () => {
                 {currentMonth} collection vs target
               </CardDescription>
             </div>
-            {monthlyTarget > 0 && <Badge variant={targetPercentage >= 100 ? "default" : targetPercentage >= 50 ? "secondary" : "outline"}>
-                {targetPercentage >= 100 ? "Target Met!" : `${targetPercentage}% Complete`}
-              </Badge>}
+            <div className="flex items-center gap-2">
+              {monthlyTarget > 0 && <Badge variant={targetPercentage >= 100 ? "default" : targetPercentage >= 50 ? "secondary" : "outline"}>
+                  {targetPercentage >= 100 ? "Target Met!" : `${targetPercentage}% Complete`}
+                </Badge>}
+              <Button variant="outline" size="sm" onClick={() => setTargetDialogOpen(true)}>
+                Set Target
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
