@@ -69,6 +69,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (currentPath.startsWith('/superadmin')) {
               return; // Don't redirect on super admin pages
             }
+
+            // If we're in password recovery mode, don't auto-redirect away
+            const searchParams = new URLSearchParams(window.location.search);
+            const isPasswordRecovery = searchParams.get('type') === 'recovery';
+            if (isPasswordRecovery) {
+              return;
+            }
             
             // Check if user is super_admin - don't redirect them
             const { data: roleData } = await supabase
