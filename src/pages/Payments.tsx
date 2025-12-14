@@ -388,13 +388,13 @@ const Payments = () => {
                 Record Payment
               </Button>
             </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Record New Payment</DialogTitle>
-              <DialogDescription>
-                Enter payment details for a student
-              </DialogDescription>
-            </DialogHeader>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Record New Payment</DialogTitle>
+                <DialogDescription>
+                  Enter payment details for a student
+                </DialogDescription>
+              </DialogHeader>
             <form onSubmit={handleSubmit}>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
@@ -506,6 +506,7 @@ const Payments = () => {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card>
