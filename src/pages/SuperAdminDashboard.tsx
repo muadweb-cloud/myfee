@@ -72,10 +72,9 @@ const SuperAdminDashboard = () => {
   
   // Messaging states
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
-  const [messageRecipient, setMessageRecipient] = useState<{ email: string; name: string } | null>(null);
-  const [messageSubject, setMessageSubject] = useState("");
+  const [messageTitle, setMessageTitle] = useState("");
   const [messageContent, setMessageContent] = useState("");
-
+  const [sendingMessage, setSendingMessage] = useState(false);
   useEffect(() => {
     checkSuperAdmin();
   }, [user]);
@@ -306,25 +305,45 @@ const SuperAdminDashboard = () => {
     }));
   };
 
-  const openMessageDialog = (email: string, schoolName: string) => {
-    setMessageRecipient({ email, name: schoolName });
-    setMessageSubject("");
+  const openMessageDialog = () => {
+    setMessageTitle("");
     setMessageContent("");
     setMessageDialogOpen(true);
   };
 
-  const handleSendMessage = () => {
-    if (!messageRecipient || !messageSubject || !messageContent) {
+  const handleSendNotification = async () => {
+    if (!messageTitle.trim() || !messageContent.trim()) {
       toast.error("Please fill in all fields");
       return;
     }
     
-    // Open mailto with pre-filled subject and body
-    const mailtoLink = `mailto:${messageRecipient.email}?subject=${encodeURIComponent(messageSubject)}&body=${encodeURIComponent(messageContent)}`;
-    window.open(mailtoLink, '_blank');
+    setSendingMessage(true);
     
-    toast.success(`Email client opened for ${messageRecipient.email}`);
-    setMessageDialogOpen(false);
+    try {
+      // Get all school IDs
+      const schoolIds = schools.map(s => s.id);
+      
+      // Insert notification for each school
+      const notifications = schoolIds.map(schoolId => ({
+        school_id: schoolId,
+        title: messageTitle.trim(),
+        message: messageContent.trim(),
+      }));
+      
+      const { error } = await supabase
+        .from("notifications")
+        .insert(notifications);
+      
+      if (error) throw error;
+      
+      toast.success(`Notification sent to ${schools.length} schools`);
+      setMessageDialogOpen(false);
+    } catch (error) {
+      console.error("Error sending notification:", error);
+      toast.error("Failed to send notification");
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   const getStatusBadge = (status: string | null) => {
@@ -600,15 +619,6 @@ const SuperAdminDashboard = () => {
                             <div className="flex items-center gap-2">
                               <Button 
                                 size="sm" 
-                                variant="outline"
-                                onClick={() => openMessageDialog(u.email, u.school_name)}
-                                className="border-slate-600 text-slate-200 hover:bg-slate-700"
-                              >
-                                <Send className="w-3 h-3 mr-1" />
-                                Message
-                              </Button>
-                              <Button 
-                                size="sm" 
                                 variant="ghost"
                                 onClick={() => { setSelectedUser(u); setDeleteUserDialogOpen(true); }}
                                 className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
@@ -634,6 +644,18 @@ const SuperAdminDashboard = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Broadcast Message Button */}
+        <div className="fixed bottom-8 right-8">
+          <Button 
+            onClick={openMessageDialog}
+            className="bg-primary hover:bg-primary/90 shadow-lg"
+            size="lg"
+          >
+            <Send className="w-5 h-5 mr-2" />
+            Broadcast Message
+          </Button>
+        </div>
       </main>
 
       {/* Manage Dialog */}
@@ -754,25 +776,25 @@ const SuperAdminDashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Message Dialog */}
+      {/* Broadcast Message Dialog */}
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5" />
-              Send Message
+              Broadcast Notification
             </DialogTitle>
             <DialogDescription className="text-slate-400">
-              Send an email to {messageRecipient?.name} ({messageRecipient?.email})
+              Send an in-app notification to all {schools.length} schools
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label className="text-slate-200">Subject</Label>
+              <Label className="text-slate-200">Title</Label>
               <Input 
-                value={messageSubject}
-                onChange={(e) => setMessageSubject(e.target.value)}
-                placeholder="Enter email subject"
+                value={messageTitle}
+                onChange={(e) => setMessageTitle(e.target.value)}
+                placeholder="Enter notification title"
                 className="bg-slate-700 border-slate-600"
               />
             </div>
@@ -790,9 +812,9 @@ const SuperAdminDashboard = () => {
             <Button variant="outline" onClick={() => setMessageDialogOpen(false)} className="border-slate-600">
               Cancel
             </Button>
-            <Button onClick={handleSendMessage}>
-              <Send className="w-4 h-4 mr-2" />
-              Send Email
+            <Button onClick={handleSendNotification} disabled={sendingMessage}>
+              {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+              Send to All
             </Button>
           </DialogFooter>
         </DialogContent>
