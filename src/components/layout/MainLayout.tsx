@@ -19,6 +19,7 @@ import {
 import { useSubscription } from "@/hooks/useSubscription";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import NotificationBell from "@/components/NotificationBell";
 
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
@@ -107,55 +108,61 @@ const MainLayout = () => {
             <p className="text-xs text-sidebar-foreground/60">Management</p>
           </div>
         </div>
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-sidebar-foreground">
-              <Menu className="h-6 w-6" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-64 bg-sidebar border-sidebar-border p-0">
-            <div className="flex flex-col h-full">
-              <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
-                <div className="bg-primary/10 p-2 rounded-lg">
-                  <GraduationCap className="h-6 w-6 text-primary" />
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-sidebar-foreground">
+                <Menu className="h-6 w-6" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-64 bg-sidebar border-sidebar-border p-0">
+              <div className="flex flex-col h-full">
+                <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
+                  <div className="bg-primary/10 p-2 rounded-lg">
+                    <GraduationCap className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h1 className="font-semibold text-sidebar-foreground">School Fee</h1>
+                    <p className="text-xs text-sidebar-foreground/60">Management System</p>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="font-semibold text-sidebar-foreground">School Fee</h1>
-                  <p className="text-xs text-sidebar-foreground/60">Management System</p>
+                <nav className="flex-1 px-3 py-4 space-y-1">
+                  <NavLinks onLinkClick={() => setMobileMenuOpen(false)} />
+                </nav>
+                <div className="p-3 border-t border-sidebar-border">
+                  <Button
+                    onClick={() => {
+                      signOut();
+                      setMobileMenuOpen(false);
+                    }}
+                    variant="outline"
+                    className="w-full justify-start gap-3 bg-sidebar-accent/50 border-sidebar-border hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span>Logout</span>
+                  </Button>
                 </div>
               </div>
-              <nav className="flex-1 px-3 py-4 space-y-1">
-                <NavLinks onLinkClick={() => setMobileMenuOpen(false)} />
-              </nav>
-              <div className="p-3 border-t border-sidebar-border">
-                <Button
-                  onClick={() => {
-                    signOut();
-                    setMobileMenuOpen(false);
-                  }}
-                  variant="outline"
-                  className="w-full justify-start gap-3 bg-sidebar-accent/50 border-sidebar-border hover:bg-destructive hover:text-destructive-foreground"
-                >
-                  <LogOut className="h-5 w-5" />
-                  <span>Logout</span>
-                </Button>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+            </SheetContent>
+          </Sheet>
+        </div>
       </header>
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:block fixed inset-y-0 left-0 w-64 bg-sidebar border-r border-sidebar-border">
         <div className="flex flex-col h-full">
-          <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
-            <div className="bg-primary/10 p-2 rounded-lg">
-              <GraduationCap className="h-6 w-6 text-primary" />
+          <div className="flex items-center justify-between px-6 py-5 border-b border-sidebar-border">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary/10 p-2 rounded-lg">
+                <GraduationCap className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="font-semibold text-sidebar-foreground">School Fee</h1>
+                <p className="text-xs text-sidebar-foreground/60">Management System</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-semibold text-sidebar-foreground">School Fee</h1>
-              <p className="text-xs text-sidebar-foreground/60">Management System</p>
-            </div>
+            <NotificationBell />
           </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
             <NavLinks />
