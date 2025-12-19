@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, DollarSign, TrendingUp, AlertCircle, Calendar, Target, CalendarClock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, DollarSign, TrendingUp, AlertCircle, Calendar, Target, CalendarClock, BarChart3 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import appIcon from "@/assets/app-icon.png";
 import SubscriptionExpiryWarning from "@/components/SubscriptionExpiryWarning";
 import TargetSettingDialog from "@/components/TargetSettingDialog";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface DashboardStats {
   totalStudents: number;
@@ -19,25 +21,31 @@ interface DashboardStats {
   totalCollectedFees: number;
   totalBalance: number;
 }
+
 interface RecentPayment {
   id: string;
   student_name: string;
   amount: number;
   payment_date: string;
 }
+
 interface MonthlyData {
   month: string;
   monthKey: string;
   collected: number;
   target: number;
 }
+
+interface ChartDataPoint {
+  label: string;
+  amount: number;
+}
+
+type TimeRange = '48hours' | '30days' | '3months' | '1year';
+
 const Dashboard = () => {
-  const {
-    schoolId
-  } = useSchoolId();
-  const {
-    subscription
-  } = useSubscription();
+  const { schoolId } = useSchoolId();
+  const { subscription } = useSubscription();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
     totalExpectedFees: 0,
@@ -52,53 +60,68 @@ const Dashboard = () => {
   const [currentMonthCollected, setCurrentMonthCollected] = useState(0);
   const [targetDialogOpen, setTargetDialogOpen] = useState(false);
   
+  // Fee graph states
+  const [allPayments, setAllPayments] = useState<{ amount: number; payment_date: string }[]>([]);
+  const [feeGraphRange, setFeeGraphRange] = useState<TimeRange>('30days');
+
   useEffect(() => {
     if (schoolId) {
       fetchDashboardData();
     }
   }, [schoolId]);
+
   const fetchDashboardData = async () => {
     if (!schoolId) return;
     try {
       // Fetch school data
-      const {
-        data: schoolData
-      } = await supabase.from("schools").select("monthly_target, school_name").eq("id", schoolId).single();
+      const { data: schoolData } = await supabase
+        .from("schools")
+        .select("monthly_target, school_name")
+        .eq("id", schoolId)
+        .single();
+      
       const target = schoolData?.monthly_target || 0;
       setMonthlyTarget(target);
       setSchoolName(schoolData?.school_name || "");
 
       // Fetch total students
-      const {
-        count: studentCount
-      } = await supabase.from("students").select("*", {
-        count: "exact",
-        head: true
-      }).eq("school_id", schoolId);
+      const { count: studentCount } = await supabase
+        .from("students")
+        .select("*", { count: "exact", head: true })
+        .eq("school_id", schoolId);
 
       // Fetch total expected fees from students
-      const {
-        data: students
-      } = await supabase.from("students").select("total_fee").eq("school_id", schoolId);
+      const { data: students } = await supabase
+        .from("students")
+        .select("total_fee")
+        .eq("school_id", schoolId);
+      
       const totalExpected = students?.reduce((sum, student) => sum + Number(student.total_fee || 0), 0) || 0;
 
-      // Fetch all payments
-      const {
-        data: payments
-      } = await supabase.from("payments").select("amount, payment_date").eq("school_id", schoolId);
+      // Fetch all payments (for graph and calculations)
+      const { data: payments } = await supabase
+        .from("payments")
+        .select("amount, payment_date")
+        .eq("school_id", schoolId)
+        .order("payment_date", { ascending: true });
+      
+      setAllPayments(payments || []);
+      
       const totalCollected = payments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
 
       // Fetch recent payments with student names
-      const {
-        data: recentPaymentsData
-      } = await supabase.from("payments").select(`
+      const { data: recentPaymentsData } = await supabase
+        .from("payments")
+        .select(`
           id,
           amount,
           payment_date,
           students (full_name)
-        `).eq("school_id", schoolId).order("payment_date", {
-        ascending: false
-      }).limit(5);
+        `)
+        .eq("school_id", schoolId)
+        .order("payment_date", { ascending: false })
+        .limit(5);
+      
       const formattedPayments = recentPaymentsData?.map((payment: any) => ({
         id: payment.id,
         student_name: payment.students?.full_name || "N/A",
@@ -136,10 +159,7 @@ const Dashboard = () => {
         const date = new Date(parseInt(year), parseInt(month) - 1);
         return {
           monthKey: key,
-          month: date.toLocaleDateString('en-US', {
-            month: 'short',
-            year: '2-digit'
-          }),
+          month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
           collected,
           target: target
         };
@@ -148,6 +168,7 @@ const Dashboard = () => {
       // Get current month's collection for the target progress
       const thisMonthCollection = monthlyMap.get(currentMonthKey) || 0;
       setCurrentMonthCollected(thisMonthCollection);
+      
       setStats({
         totalStudents: studentCount || 0,
         totalExpectedFees: totalExpected,
@@ -163,12 +184,118 @@ const Dashboard = () => {
     }
   };
 
+  // Calculate chart data based on selected range
+  const feeChartData = useMemo((): ChartDataPoint[] => {
+    const now = new Date();
+    let startDate: Date;
+    let groupBy: 'hour' | 'day' | 'month';
+    
+    switch (feeGraphRange) {
+      case '48hours':
+        startDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+        groupBy = 'hour';
+        break;
+      case '30days':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        groupBy = 'day';
+        break;
+      case '3months':
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        groupBy = 'day';
+        break;
+      case '1year':
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        groupBy = 'month';
+        break;
+      default:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        groupBy = 'day';
+    }
+
+    // Filter payments within range
+    const filteredPayments = allPayments.filter(p => {
+      const paymentDate = new Date(p.payment_date);
+      return paymentDate >= startDate && paymentDate <= now;
+    });
+
+    // Group payments
+    const grouped = new Map<string, number>();
+
+    if (groupBy === 'hour') {
+      // Initialize all hours
+      for (let i = 47; i >= 0; i--) {
+        const date = new Date(now.getTime() - i * 60 * 60 * 1000);
+        const key = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`;
+        grouped.set(key, 0);
+      }
+      
+      filteredPayments.forEach(p => {
+        const date = new Date(p.payment_date);
+        const key = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`;
+        if (grouped.has(key)) {
+          grouped.set(key, (grouped.get(key) || 0) + Number(p.amount));
+        }
+      });
+    } else if (groupBy === 'day') {
+      const days = feeGraphRange === '30days' ? 30 : 90;
+      for (let i = days - 1; i >= 0; i--) {
+        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const key = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        grouped.set(key, 0);
+      }
+      
+      filteredPayments.forEach(p => {
+        const date = new Date(p.payment_date);
+        const key = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (grouped.has(key)) {
+          grouped.set(key, (grouped.get(key) || 0) + Number(p.amount));
+        }
+      });
+    } else {
+      // Monthly
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const key = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        grouped.set(key, 0);
+      }
+      
+      filteredPayments.forEach(p => {
+        const date = new Date(p.payment_date);
+        const key = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        if (grouped.has(key)) {
+          grouped.set(key, (grouped.get(key) || 0) + Number(p.amount));
+        }
+      });
+    }
+
+    return Array.from(grouped.entries()).map(([label, amount]) => ({ label, amount }));
+  }, [allPayments, feeGraphRange]);
+
+  // Calculate total for selected range
+  const rangeTotal = useMemo(() => {
+    return feeChartData.reduce((sum, d) => sum + d.amount, 0);
+  }, [feeChartData]);
+
   // Calculate percentages using memoization for performance
-  const collectionPercentage = useMemo(() => stats.totalExpectedFees > 0 ? Math.round(stats.totalCollectedFees / stats.totalExpectedFees * 100) : 0, [stats.totalCollectedFees, stats.totalExpectedFees]);
-  const targetPercentage = useMemo(() => monthlyTarget > 0 ? Math.min(Math.round(currentMonthCollected / monthlyTarget * 100), 100) : 0, [currentMonthCollected, monthlyTarget]);
-  const maxMonthlyCollection = useMemo(() => Math.max(...monthlyData.map(d => d.collected), monthlyTarget || 1), [monthlyData, monthlyTarget]);
+  const collectionPercentage = useMemo(() => 
+    stats.totalExpectedFees > 0 ? Math.round(stats.totalCollectedFees / stats.totalExpectedFees * 100) : 0, 
+    [stats.totalCollectedFees, stats.totalExpectedFees]
+  );
+  
+  const targetPercentage = useMemo(() => 
+    monthlyTarget > 0 ? Math.min(Math.round(currentMonthCollected / monthlyTarget * 100), 100) : 0, 
+    [currentMonthCollected, monthlyTarget]
+  );
+  
+  const maxMonthlyCollection = useMemo(() => 
+    Math.max(...monthlyData.map(d => d.collected), monthlyTarget || 1), 
+    [monthlyData, monthlyTarget]
+  );
+
   if (loading) {
-    return <div className="space-y-6 animate-fade-in">
+    return (
+      <div className="space-y-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <Skeleton className="h-9 w-48 mb-2" />
@@ -176,7 +303,8 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => <Card key={i}>
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
               <CardHeader className="pb-2">
                 <Skeleton className="h-4 w-24" />
               </CardHeader>
@@ -184,15 +312,17 @@ const Dashboard = () => {
                 <Skeleton className="h-8 w-32 mb-2" />
                 <Skeleton className="h-3 w-20" />
               </CardContent>
-            </Card>)}
+            </Card>
+          ))}
         </div>
-      </div>;
+      </div>
+    );
   }
-  const currentMonth = new Date().toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric'
-  });
-  return <div className="space-y-6 animate-fade-in">
+
+  const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
@@ -203,28 +333,37 @@ const Dashboard = () => {
           </div>
         </div>
         
-        {subscription && <Card className={`w-full sm:w-auto ${subscription.status === 'active' ? 'border-green-500 bg-green-50 dark:bg-green-950/30' : 'border-primary/20'}`}>
+        {subscription && (
+          <Card className={`w-full sm:w-auto ${subscription.status === 'active' ? 'border-green-500 bg-green-50 dark:bg-green-950/30' : 'border-primary/20'}`}>
             <CardContent className="pt-4 pb-3">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
-                  <Badge variant={subscription.status === 'active' ? 'default' : subscription.status === 'trial' ? 'secondary' : 'destructive'} className={`text-xs ${subscription.status === 'active' ? 'bg-green-500 hover:bg-green-600' : ''}`}>
+                  <Badge 
+                    variant={subscription.status === 'active' ? 'default' : subscription.status === 'trial' ? 'secondary' : 'destructive'} 
+                    className={`text-xs ${subscription.status === 'active' ? 'bg-green-500 hover:bg-green-600' : ''}`}
+                  >
                     {subscription.status.toUpperCase()}
                   </Badge>
-                  {subscription.status === 'trial' && <span className="text-xs text-muted-foreground">
+                  {subscription.status === 'trial' && (
+                    <span className="text-xs text-muted-foreground">
                       {subscription.trialDaysRemaining} days left
-                    </span>}
+                    </span>
+                  )}
                 </div>
-                {subscription.status === 'active' && subscription.expiryDate && <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {subscription.status === 'active' && subscription.expiryDate && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <CalendarClock className="h-3 w-3" />
                     <span>Expires: {new Date(subscription.expiryDate).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })}</span>
-                  </div>}
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}</span>
+                  </div>
+                )}
               </div>
             </CardContent>
-          </Card>}
+          </Card>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -237,7 +376,9 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-foreground whitespace-nowrap overflow-hidden text-ellipsis">{stats.totalStudents.toLocaleString()}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+              {stats.totalStudents.toLocaleString()}
+            </div>
             <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
               {subscription ? `of ${subscription.maxStudents.toLocaleString()} max capacity` : 'Enrolled students'}
             </p>
@@ -252,7 +393,9 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-foreground whitespace-nowrap overflow-hidden text-ellipsis">{formatCurrency(stats.totalExpectedFees)}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+              {formatCurrency(stats.totalExpectedFees)}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Total expected revenue</p>
           </CardContent>
         </Card>
@@ -265,7 +408,9 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 whitespace-nowrap overflow-hidden text-ellipsis">{formatCurrency(stats.totalCollectedFees)}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 whitespace-nowrap overflow-hidden text-ellipsis">
+              {formatCurrency(stats.totalCollectedFees)}
+            </div>
             <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
               <span className="text-green-600 dark:text-green-400 font-medium">{collectionPercentage}%</span> of expected fees
             </p>
@@ -280,7 +425,9 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap overflow-hidden text-ellipsis">{formatCurrency(stats.totalBalance)}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap overflow-hidden text-ellipsis">
+              {formatCurrency(stats.totalBalance)}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Pending collection</p>
           </CardContent>
         </Card>
@@ -304,6 +451,79 @@ const Dashboard = () => {
         onTargetUpdated={fetchDashboardData}
       />
 
+      {/* Fee Collection Graph */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Fee Collection Trends
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Total collected: {formatCurrency(rangeTotal)}
+              </CardDescription>
+            </div>
+            <Select value={feeGraphRange} onValueChange={(v) => setFeeGraphRange(v as TimeRange)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="48hours">Last 48 Hours</SelectItem>
+                <SelectItem value="30days">Last 30 Days</SelectItem>
+                <SelectItem value="3months">Last 3 Months</SelectItem>
+                <SelectItem value="1year">Last Year</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={feeChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  dataKey="label" 
+                  className="text-xs" 
+                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                  tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+                  interval={feeGraphRange === '48hours' ? 5 : feeGraphRange === '30days' ? 4 : feeGraphRange === '3months' ? 14 : 1}
+                />
+                <YAxis 
+                  className="text-xs"
+                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                  tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+                  tickFormatter={(value) => formatCurrency(value).replace(/\.00$/, '')}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                  labelStyle={{ color: 'hsl(var(--foreground))' }}
+                  formatter={(value: number) => [formatCurrency(value), 'Amount']}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="amount" 
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={2}
+                  fillOpacity={1} 
+                  fill="url(#colorAmount)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Monthly Target Progress - Uses current month's collection */}
       <Card>
         <CardHeader className="pb-3">
@@ -318,9 +538,11 @@ const Dashboard = () => {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              {monthlyTarget > 0 && <Badge variant={targetPercentage >= 100 ? "default" : targetPercentage >= 50 ? "secondary" : "outline"}>
+              {monthlyTarget > 0 && (
+                <Badge variant={targetPercentage >= 100 ? "default" : targetPercentage >= 50 ? "secondary" : "outline"}>
                   {targetPercentage >= 100 ? "Target Met!" : `${targetPercentage}% Complete`}
-                </Badge>}
+                </Badge>
+              )}
               <Button variant="outline" size="sm" onClick={() => setTargetDialogOpen(true)}>
                 Set Target
               </Button>
@@ -328,18 +550,24 @@ const Dashboard = () => {
           </div>
         </CardHeader>
         <CardContent>
-          {monthlyTarget > 0 ? <div className="space-y-4">
+          {monthlyTarget > 0 ? (
+            <div className="space-y-4">
               <div className="relative h-12 bg-muted rounded-lg overflow-hidden">
-                <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-primary/70 rounded-lg flex items-center transition-all duration-700 ease-out" style={{
-              width: `${Math.min(targetPercentage, 100)}%`
-            }}>
-                  {targetPercentage >= 15 && <span className="absolute right-3 text-sm font-bold text-primary-foreground">
+                <div 
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-primary/70 rounded-lg flex items-center transition-all duration-700 ease-out" 
+                  style={{ width: `${Math.min(targetPercentage, 100)}%` }}
+                >
+                  {targetPercentage >= 15 && (
+                    <span className="absolute right-3 text-sm font-bold text-primary-foreground">
                       {targetPercentage}%
-                    </span>}
+                    </span>
+                  )}
                 </div>
-                {targetPercentage < 15 && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-primary-foreground">
+                {targetPercentage < 15 && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-primary-foreground">
                     {targetPercentage}%
-                  </span>}
+                  </span>
+                )}
               </div>
               <div className="flex justify-between items-center text-sm">
                 <div className="space-y-0.5">
@@ -351,11 +579,14 @@ const Dashboard = () => {
                   <p className="text-xl font-bold text-foreground">{formatCurrency(monthlyTarget)}</p>
                 </div>
               </div>
-            </div> : <div className="text-center py-6 text-muted-foreground">
+            </div>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
               <Target className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p>No monthly target set</p>
               <p className="text-sm mt-1">Set your target in Settings to track progress</p>
-            </div>}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -373,35 +604,46 @@ const Dashboard = () => {
         <CardContent>
           <div className="space-y-3">
             {monthlyData.map((data, index) => {
-            const isCurrentMonth = data.monthKey === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-            const percentage = maxMonthlyCollection > 0 ? data.collected / maxMonthlyCollection * 100 : 0;
-            const targetMet = monthlyTarget > 0 && data.collected >= monthlyTarget;
-            return <div key={data.monthKey} className={`flex items-center gap-4 p-2 rounded-lg transition-colors ${isCurrentMonth ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'}`}>
+              const isCurrentMonth = data.monthKey === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+              const percentage = maxMonthlyCollection > 0 ? data.collected / maxMonthlyCollection * 100 : 0;
+              const targetMet = monthlyTarget > 0 && data.collected >= monthlyTarget;
+              
+              return (
+                <div 
+                  key={data.monthKey} 
+                  className={`flex items-center gap-4 p-2 rounded-lg transition-colors ${isCurrentMonth ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'}`}
+                >
                   <div className="w-20 text-sm font-medium flex items-center gap-2">
                     {data.month}
                     {isCurrentMonth && <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />}
                   </div>
                   <div className="flex-1 relative">
                     <div className="h-8 bg-muted rounded-md overflow-hidden">
-                      <div className={`h-full rounded-md transition-all duration-500 ${targetMet ? 'bg-green-500' : 'bg-primary/80'}`} style={{
-                    width: `${percentage}%`,
-                    animationDelay: `${index * 50}ms`
-                  }} />
+                      <div 
+                        className={`h-full rounded-md transition-all duration-500 ${targetMet ? 'bg-green-500' : 'bg-primary/80'}`} 
+                        style={{ width: `${percentage}%`, animationDelay: `${index * 50}ms` }} 
+                      />
                     </div>
                     {/* Target line indicator */}
-                    {monthlyTarget > 0 && maxMonthlyCollection > 0 && <div className="absolute top-0 bottom-0 w-0.5 bg-amber-500/80" style={{
-                  left: `${monthlyTarget / maxMonthlyCollection * 100}%`
-                }} title={`Target: ${formatCurrency(monthlyTarget)}`} />}
+                    {monthlyTarget > 0 && maxMonthlyCollection > 0 && (
+                      <div 
+                        className="absolute top-0 bottom-0 w-0.5 bg-amber-500/80" 
+                        style={{ left: `${monthlyTarget / maxMonthlyCollection * 100}%` }} 
+                        title={`Target: ${formatCurrency(monthlyTarget)}`} 
+                      />
+                    )}
                   </div>
                   <div className="w-28 text-right">
                     <span className={`text-sm font-semibold ${targetMet ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
                       {formatCurrency(data.collected)}
                     </span>
                   </div>
-                </div>;
-          })}
+                </div>
+              );
+            })}
           </div>
-          {monthlyTarget > 0 && <div className="flex items-center gap-4 mt-4 pt-4 border-t text-xs text-muted-foreground">
+          {monthlyTarget > 0 && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-primary/80 rounded" />
                 <span>Collection</span>
@@ -414,7 +656,8 @@ const Dashboard = () => {
                 <div className="w-0.5 h-3 bg-amber-500" />
                 <span>Monthly Target ({formatCurrency(monthlyTarget)})</span>
               </div>
-            </div>}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -428,10 +671,13 @@ const Dashboard = () => {
           <CardDescription>Latest fee payments received</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentPayments.length === 0 ? <div className="text-center py-8">
+          {recentPayments.length === 0 ? (
+            <div className="text-center py-8">
               <DollarSign className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-muted-foreground">No payments recorded yet</p>
-            </div> : <div className="overflow-x-auto">
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -441,26 +687,33 @@ const Dashboard = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentPayments.map((payment, index) => <TableRow key={payment.id} className="animate-fade-in" style={{
-                animationDelay: `${index * 100}ms`
-              }}>
+                  {recentPayments.map((payment, index) => (
+                    <TableRow 
+                      key={payment.id} 
+                      className="animate-fade-in" 
+                      style={{ animationDelay: `${index * 100}ms` }}
+                    >
                       <TableCell className="font-medium">{payment.student_name}</TableCell>
                       <TableCell className="text-right font-semibold text-green-600 dark:text-green-400">
                         {formatCurrency(payment.amount)}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
                         {new Date(payment.payment_date).toLocaleDateString('en-US', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                  })}
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
                       </TableCell>
-                    </TableRow>)}
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
-            </div>}
+            </div>
+          )}
         </CardContent>
       </Card>
-    </div>;
+    </div>
+  );
 };
+
 export default Dashboard;

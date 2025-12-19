@@ -67,7 +67,7 @@ const Billing = () => {
       if (method === "whatsapp") {
         window.open("https://wa.me/254726383188", "_blank");
       } else {
-        window.location.href = "mailto:Muadhaji24@gmail.com";
+        window.location.href = "mailto:schoolfeesystem@gmail.com";
       }
     }
     setContactDialogOpen(false);
@@ -233,7 +233,7 @@ const Billing = () => {
               onClick={() => handleContactAndRequest("email")}
             >
               <Mail className="h-5 w-5 text-primary" />
-              Email: Muadhaji24@gmail.com
+              Email: schoolfeesystem@gmail.com
             </Button>
           </div>
         </DialogContent>
