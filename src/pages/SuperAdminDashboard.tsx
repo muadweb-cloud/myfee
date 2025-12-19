@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Shield, Building2, Users, CreditCard, Calendar, Settings, LogOut, Loader2, CheckCircle, XCircle, Clock, Trash2, Mail, Key, Eye, EyeOff } from "lucide-react";
+import { Shield, Building2, Users, CreditCard, Calendar, Settings, LogOut, Loader2, CheckCircle, XCircle, Clock, Trash2, Mail, Key, Eye, EyeOff, Send, MessageSquare } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { format, addDays, addMonths } from "date-fns";
 
 interface School {
@@ -68,6 +69,12 @@ const SuperAdminDashboard = () => {
   const [maxStudents, setMaxStudents] = useState("200");
   const [subscriptionDays, setSubscriptionDays] = useState("30");
   const [actionLoading, setActionLoading] = useState(false);
+  
+  // Messaging states
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageRecipient, setMessageRecipient] = useState<{ email: string; name: string } | null>(null);
+  const [messageSubject, setMessageSubject] = useState("");
+  const [messageContent, setMessageContent] = useState("");
 
   useEffect(() => {
     checkSuperAdmin();
@@ -299,23 +306,25 @@ const SuperAdminDashboard = () => {
     }));
   };
 
-  const handleSendResetLink = async (email: string) => {
-    try {
-      const redirectTo = `${window.location.origin}/auth?type=recovery`;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo,
-      });
+  const openMessageDialog = (email: string, schoolName: string) => {
+    setMessageRecipient({ email, name: schoolName });
+    setMessageSubject("");
+    setMessageContent("");
+    setMessageDialogOpen(true);
+  };
 
-      if (error) {
-        console.error("Error sending reset link:", error);
-        toast.error("Failed to send reset link");
-      } else {
-        toast.success("Password reset link sent to user's email");
-      }
-    } catch (err) {
-      console.error("Unexpected error sending reset link:", err);
-      toast.error("Something went wrong while sending reset link");
+  const handleSendMessage = () => {
+    if (!messageRecipient || !messageSubject || !messageContent) {
+      toast.error("Please fill in all fields");
+      return;
     }
+    
+    // Open mailto with pre-filled subject and body
+    const mailtoLink = `mailto:${messageRecipient.email}?subject=${encodeURIComponent(messageSubject)}&body=${encodeURIComponent(messageContent)}`;
+    window.open(mailtoLink, '_blank');
+    
+    toast.success(`Email client opened for ${messageRecipient.email}`);
+    setMessageDialogOpen(false);
   };
 
   const getStatusBadge = (status: string | null) => {
@@ -592,11 +601,11 @@ const SuperAdminDashboard = () => {
                               <Button 
                                 size="sm" 
                                 variant="outline"
-                                onClick={() => handleSendResetLink(u.email)}
+                                onClick={() => openMessageDialog(u.email, u.school_name)}
                                 className="border-slate-600 text-slate-200 hover:bg-slate-700"
                               >
-                                <Key className="w-3 h-3 mr-1" />
-                                Reset
+                                <Send className="w-3 h-3 mr-1" />
+                                Message
                               </Button>
                               <Button 
                                 size="sm" 
@@ -740,6 +749,50 @@ const SuperAdminDashboard = () => {
             <Button variant="destructive" onClick={handleDeleteUser} disabled={actionLoading}>
               {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Remove User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Message Dialog */}
+      <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Send Message
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Send an email to {messageRecipient?.name} ({messageRecipient?.email})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-slate-200">Subject</Label>
+              <Input 
+                value={messageSubject}
+                onChange={(e) => setMessageSubject(e.target.value)}
+                placeholder="Enter email subject"
+                className="bg-slate-700 border-slate-600"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-200">Message</Label>
+              <Textarea 
+                value={messageContent}
+                onChange={(e) => setMessageContent(e.target.value)}
+                placeholder="Enter your message..."
+                className="bg-slate-700 border-slate-600 min-h-[150px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMessageDialogOpen(false)} className="border-slate-600">
+              Cancel
+            </Button>
+            <Button onClick={handleSendMessage}>
+              <Send className="w-4 h-4 mr-2" />
+              Send Email
             </Button>
           </DialogFooter>
         </DialogContent>

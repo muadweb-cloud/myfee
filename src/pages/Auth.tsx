@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { MessageCircle, Mail } from "lucide-react";
+import { MessageCircle, Mail, ArrowLeft } from "lucide-react";
 import appIcon from "@/assets/app-icon.png";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -22,6 +22,14 @@ const Auth = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  
+  // Forgot password flow states
+  const [forgotStep, setForgotStep] = useState<'email' | 'code' | 'newPassword'>('email');
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
   
   const [loginData, setLoginData] = useState({
     email: "",
@@ -172,6 +180,205 @@ const Auth = () => {
     }
   };
 
+  const handleSendCode = async () => {
+    if (!forgotEmail) {
+      toast({
+        title: "Error",
+        description: "Please enter your email address",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: forgotEmail,
+        options: {
+          shouldCreateUser: false,
+        }
+      });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Code Sent",
+          description: "Check your email for the verification code"
+        });
+        setForgotStep('code');
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      });
+    }
+    setForgotLoading(false);
+  };
+
+  const handleVerifyCode = async () => {
+    if (!otpCode || otpCode.length !== 6) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid 6-digit code",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: forgotEmail,
+        token: otpCode,
+        type: 'email'
+      });
+
+      if (error) {
+        toast({
+          title: "Invalid Code",
+          description: "The code you entered is invalid or expired",
+          variant: "destructive"
+        });
+      } else {
+        setForgotStep('newPassword');
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      });
+    }
+    setForgotLoading(false);
+  };
+
+  const handleSetNewPassword = async () => {
+    if (!newPassword || !confirmNewPassword) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Password updated successfully!"
+        });
+        setForgotPasswordOpen(false);
+        resetForgotState();
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      });
+    }
+    setForgotLoading(false);
+  };
+
+  const resetForgotState = () => {
+    setForgotStep('email');
+    setForgotEmail("");
+    setOtpCode("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+  };
+
+  const handleCloseForgotDialog = (open: boolean) => {
+    if (!open) {
+      resetForgotState();
+    }
+    setForgotPasswordOpen(open);
+  };
+
+  // Recovery mode from email link
+  if (isRecoveryMode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/10 p-4">
+        <Card className="w-full max-w-md shadow-lg">
+          <CardHeader className="text-center space-y-2">
+            <div className="flex justify-center mb-2">
+              <img src={appIcon} alt="School Fee System" className="h-16 w-16 object-contain" />
+            </div>
+            <CardTitle className="text-2xl">Reset Your Password</CardTitle>
+            <CardDescription>Enter your new password below</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handlePasswordReset} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={isResetLoading}>
+                {isResetLoading ? "Updating..." : "Update Password"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/10 p-4">
       <Card className="w-full max-w-md shadow-lg">
@@ -306,42 +513,144 @@ const Auth = () => {
       </Card>
 
       {/* Forgot Password Dialog */}
-      <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+      <Dialog open={forgotPasswordOpen} onOpenChange={handleCloseForgotDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Forgot Password</DialogTitle>
+            <DialogTitle>
+              {forgotStep === 'email' && "Forgot Password"}
+              {forgotStep === 'code' && "Enter Verification Code"}
+              {forgotStep === 'newPassword' && "Set New Password"}
+            </DialogTitle>
             <DialogDescription>
-              Please contact the developer to recover your password.
+              {forgotStep === 'email' && "Enter your email to receive a verification code"}
+              {forgotStep === 'code' && "Enter the 6-digit code sent to your email"}
+              {forgotStep === 'newPassword' && "Create a new password for your account"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-              <MessageCircle className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm font-medium">WhatsApp</p>
-                <a 
-                  href={`https://wa.me/${CONTACT_WHATSAPP.replace(/[^0-9+]/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-primary hover:underline"
-                >
-                  {CONTACT_WHATSAPP}
-                </a>
+
+          {forgotStep === 'email' && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email Address</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  placeholder="admin@school.com"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                />
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={handleSendCode}
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? "Sending..." : "Send Code"}
+              </Button>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or contact support</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                  <MessageCircle className="h-5 w-5 text-green-500" />
+                  <div>
+                    <p className="text-sm font-medium">WhatsApp</p>
+                    <a 
+                      href={`https://wa.me/${CONTACT_WHATSAPP.replace(/[^0-9+]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      {CONTACT_WHATSAPP}
+                    </a>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                  <Mail className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Email</p>
+                    <a 
+                      href={`mailto:${CONTACT_EMAIL}`}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      {CONTACT_EMAIL}
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-              <Mail className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-sm font-medium">Email</p>
-                <a 
-                  href={`mailto:${CONTACT_EMAIL}`}
-                  className="text-sm text-primary hover:underline"
-                >
-                  {CONTACT_EMAIL}
-                </a>
+          )}
+
+          {forgotStep === 'code' && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="otp-code">Verification Code</Label>
+                <Input
+                  id="otp-code"
+                  type="text"
+                  placeholder="000000"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  maxLength={6}
+                  className="text-center text-2xl tracking-widest"
+                />
               </div>
+              <Button 
+                className="w-full" 
+                onClick={handleVerifyCode}
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? "Verifying..." : "Verify Code"}
+              </Button>
+              <Button 
+                variant="ghost" 
+                className="w-full"
+                onClick={() => setForgotStep('email')}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Email
+              </Button>
             </div>
-          </div>
+          )}
+
+          {forgotStep === 'newPassword' && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-pass">New Password</Label>
+                <Input
+                  id="new-pass"
+                  type="password"
+                  placeholder="••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-new-pass">Confirm Password</Label>
+                <Input
+                  id="confirm-new-pass"
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                />
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={handleSetNewPassword}
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? "Updating..." : "Update Password"}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

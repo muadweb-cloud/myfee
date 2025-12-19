@@ -79,8 +79,11 @@ export const useSubscription = () => {
             showExpiryWarning
           });
 
-          // Check if subscription expired and redirect to billing (only for non-billing pages)
-          if (school.subscription_status === 'expired') {
+          // Check if subscription expired (including trial) and redirect to billing
+          const isExpired = school.subscription_status === 'expired';
+          const isTrialExpired = school.subscription_status === 'trial' && daysRemaining <= 0;
+          
+          if (isExpired || isTrialExpired) {
             const currentPath = location.pathname;
             if (currentPath !== '/billing' && currentPath !== '/auth' && !currentPath.startsWith('/superadmin')) {
               navigate('/billing');
