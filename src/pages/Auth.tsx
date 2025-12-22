@@ -191,11 +191,10 @@ const Auth = () => {
 
     setForgotLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: forgotEmail,
-        options: {
-          shouldCreateUser: false,
-        }
+      const redirectUrl = `${window.location.origin}/auth?type=recovery`;
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: redirectUrl,
       });
 
       if (error) {
@@ -206,10 +205,11 @@ const Auth = () => {
         });
       } else {
         toast({
-          title: "Code Sent",
-          description: "Check your email for the verification code"
+          title: "Reset Link Sent",
+          description: "Check your email for the password reset link"
         });
-        setForgotStep('code');
+        setForgotPasswordOpen(false);
+        resetForgotState();
       }
     } catch (err) {
       toast({
@@ -515,111 +515,31 @@ const Auth = () => {
       <Dialog open={forgotPasswordOpen} onOpenChange={handleCloseForgotDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {forgotStep === 'email' && "Forgot Password"}
-              {forgotStep === 'code' && "Enter Verification Code"}
-              {forgotStep === 'newPassword' && "Set New Password"}
-            </DialogTitle>
+            <DialogTitle>Forgot Password</DialogTitle>
             <DialogDescription>
-              {forgotStep === 'email' && "Enter your email to receive a verification code"}
-              {forgotStep === 'code' && "Enter the 6-digit code sent to your email"}
-              {forgotStep === 'newPassword' && "Create a new password for your account"}
+              Enter your email to receive a password reset link
             </DialogDescription>
           </DialogHeader>
 
-          {forgotStep === 'email' && (
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="forgot-email">Email Address</Label>
-                <Input
-                  id="forgot-email"
-                  type="email"
-                  placeholder="admin@school.com"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                />
-              </div>
-              <Button 
-                className="w-full" 
-                onClick={handleSendCode}
-                disabled={forgotLoading}
-              >
-                {forgotLoading ? "Sending..." : "Send Code"}
-              </Button>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="forgot-email">Email Address</Label>
+              <Input
+                id="forgot-email"
+                type="email"
+                placeholder="admin@school.com"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+              />
             </div>
-          )}
-
-          {forgotStep === 'code' && (
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="otp-code">Verification Code</Label>
-                <Input
-                  id="otp-code"
-                  type="text"
-                  placeholder="000000"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  maxLength={6}
-                  className="text-center text-2xl tracking-widest"
-                />
-              </div>
-              <Button 
-                className="w-full" 
-                onClick={handleVerifyCode}
-                disabled={forgotLoading}
-              >
-                {forgotLoading ? "Verifying..." : "Verify Code"}
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={handleSendCode}
-                disabled={forgotLoading}
-              >
-                {forgotLoading ? "Sending..." : "Resend Code"}
-              </Button>
-              <Button 
-                variant="ghost" 
-                className="w-full"
-                onClick={() => setForgotStep('email')}
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Email
-              </Button>
-            </div>
-          )}
-
-          {forgotStep === 'newPassword' && (
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="new-pass">New Password</Label>
-                <Input
-                  id="new-pass"
-                  type="password"
-                  placeholder="••••••••"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-new-pass">Confirm Password</Label>
-                <Input
-                  id="confirm-new-pass"
-                  type="password"
-                  placeholder="••••••••"
-                  value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
-                />
-              </div>
-              <Button 
-                className="w-full" 
-                onClick={handleSetNewPassword}
-                disabled={forgotLoading}
-              >
-                {forgotLoading ? "Updating..." : "Update Password"}
-              </Button>
-            </div>
-          )}
+            <Button 
+              className="w-full" 
+              onClick={handleSendCode}
+              disabled={forgotLoading}
+            >
+              {forgotLoading ? "Sending..." : "Send Reset Link"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

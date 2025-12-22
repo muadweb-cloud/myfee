@@ -15,7 +15,8 @@ import {
   Shield,
   Menu,
   Moon,
-  Sun
+  Sun,
+  MessageCircle
 } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useEffect, useState } from "react";
@@ -76,6 +77,7 @@ const MainLayout = () => {
     { name: "Reports", href: "/reports", icon: FileText },
     { name: "Billing", href: "/billing", icon: CreditCard },
     { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Contact Us", href: "/contact", icon: MessageCircle },
   ];
 
   const NavLinks = ({ onLinkClick }: { onLinkClick?: () => void }) => (
