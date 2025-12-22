@@ -8,12 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { MessageCircle, Mail, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import appIcon from "@/assets/app-icon.png";
 import { supabase } from "@/integrations/supabase/client";
 
-const CONTACT_EMAIL = "schoolfeesystem@gmail.com";
-const CONTACT_WHATSAPP = "+255 123 456 789";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -548,44 +546,6 @@ const Auth = () => {
               >
                 {forgotLoading ? "Sending..." : "Send Code"}
               </Button>
-              
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">Or contact support</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                  <MessageCircle className="h-5 w-5 text-green-500" />
-                  <div>
-                    <p className="text-sm font-medium">WhatsApp</p>
-                    <a 
-                      href={`https://wa.me/${CONTACT_WHATSAPP.replace(/[^0-9+]/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      {CONTACT_WHATSAPP}
-                    </a>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                  <Mail className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium">Email</p>
-                    <a 
-                      href={`mailto:${CONTACT_EMAIL}`}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      {CONTACT_EMAIL}
-                    </a>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
