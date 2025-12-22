@@ -12,14 +12,16 @@ import {
   GraduationCap,
   BookOpen,
   CreditCard,
-  MessageCircle,
   Shield,
-  Menu
+  Menu,
+  Moon,
+  Sun
 } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/NotificationBell";
+import { useTheme } from "next-themes";
 
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
@@ -27,6 +29,11 @@ const MainLayout = () => {
   const { subscription } = useSubscription();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
   useEffect(() => {
     const checkSuperAdmin = async () => {
@@ -69,7 +76,6 @@ const MainLayout = () => {
     { name: "Reports", href: "/reports", icon: FileText },
     { name: "Billing", href: "/billing", icon: CreditCard },
     { name: "Settings", href: "/settings", icon: Settings },
-    { name: "Contact Us", href: "/contact", icon: MessageCircle },
   ];
 
   const NavLinks = ({ onLinkClick }: { onLinkClick?: () => void }) => (
@@ -109,6 +115,9 @@ const MainLayout = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-sidebar-foreground">
+            {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </Button>
           <NotificationBell />
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
@@ -162,7 +171,12 @@ const MainLayout = () => {
                 <p className="text-xs text-sidebar-foreground/60">Management System</p>
               </div>
             </div>
-            <NotificationBell />
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-sidebar-foreground">
+                {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </Button>
+              <NotificationBell />
+            </div>
           </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
             <NavLinks />

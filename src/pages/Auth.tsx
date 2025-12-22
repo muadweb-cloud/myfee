@@ -611,6 +611,14 @@ const Auth = () => {
                 {forgotLoading ? "Verifying..." : "Verify Code"}
               </Button>
               <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={handleSendCode}
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? "Sending..." : "Resend Code"}
+              </Button>
+              <Button 
                 variant="ghost" 
                 className="w-full"
                 onClick={() => setForgotStep('email')}
