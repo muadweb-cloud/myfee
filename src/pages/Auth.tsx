@@ -51,6 +51,7 @@ const Auth = () => {
 
   const searchParams = new URLSearchParams(location.search);
   const isRecoveryMode = searchParams.get("type") === "recovery";
+  const defaultTab = searchParams.get("tab") === "signup" ? "signup" : "login";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -390,7 +391,7 @@ const Auth = () => {
           <CardDescription>Admin Portal - Manage your school's finances</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs defaultValue={defaultTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Login</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>

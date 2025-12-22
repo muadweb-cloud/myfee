@@ -4,9 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, FileText } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Download, FileText, ChevronDown } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface StudentBalance {
   id: string;
@@ -100,7 +103,52 @@ const Reports = () => {
 
     toast({
       title: "Success",
-      description: "Report exported successfully",
+      description: "Report exported to CSV successfully",
+    });
+  };
+
+  const exportToPDF = (data: StudentBalance[], filename: string, title: string) => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(18);
+    doc.text(title, 14, 22);
+    
+    // Add date
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
+
+    // Calculate totals
+    const totalFee = data.reduce((sum, s) => sum + s.total_fee, 0);
+    const totalPaid = data.reduce((sum, s) => sum + s.total_paid, 0);
+    const totalBalance = data.reduce((sum, s) => sum + s.balance, 0);
+
+    // Add table
+    autoTable(doc, {
+      startY: 35,
+      head: [["Admission No", "Name", "Class", "Total Fee", "Paid", "Balance"]],
+      body: [
+        ...data.map(student => [
+          student.admission_no,
+          student.full_name,
+          student.class_name,
+          formatCurrency(student.total_fee),
+          formatCurrency(student.total_paid),
+          formatCurrency(student.balance),
+        ]),
+        // Add totals row
+        ["", "TOTAL", "", formatCurrency(totalFee), formatCurrency(totalPaid), formatCurrency(totalBalance)]
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [59, 130, 246] },
+      footStyles: { fontStyle: 'bold' },
+    });
+
+    doc.save(`${filename}-${new Date().toISOString().split("T")[0]}.pdf`);
+
+    toast({
+      title: "Success",
+      description: "Report exported to PDF successfully",
     });
   };
 
@@ -134,15 +182,27 @@ const Reports = () => {
                   <CardTitle>Students with Outstanding Balance</CardTitle>
                   <CardDescription>Students who still owe fees</CardDescription>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => exportToCSV(studentsWithBalance, "students-with-balance")}
-                  disabled={studentsWithBalance.length === 0}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export CSV
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={studentsWithBalance.length === 0}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                      <ChevronDown className="h-4 w-4 ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => exportToCSV(studentsWithBalance, "students-with-balance")}>
+                      Export as CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportToPDF(studentsWithBalance, "students-with-balance", "Students with Outstanding Balance")}>
+                      Export as PDF
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CardHeader>
             <CardContent>
@@ -195,15 +255,27 @@ const Reports = () => {
                   <CardTitle>Fully Paid Students</CardTitle>
                   <CardDescription>Students who have completed their fee payments</CardDescription>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => exportToCSV(fullyPaidStudents, "fully-paid-students")}
-                  disabled={fullyPaidStudents.length === 0}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export CSV
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={fullyPaidStudents.length === 0}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                      <ChevronDown className="h-4 w-4 ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => exportToCSV(fullyPaidStudents, "fully-paid-students")}>
+                      Export as CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportToPDF(fullyPaidStudents, "fully-paid-students", "Fully Paid Students")}>
+                      Export as PDF
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CardHeader>
             <CardContent>

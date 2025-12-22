@@ -33,7 +33,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/onboarding" element={<Onboarding />} />
+            {/* Onboarding redirects to dashboard - no longer needed */}
+            <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />
             <Route path="/superadmin-login" element={<SuperAdminLogin />} />
             <Route path="/superadmin" element={<SuperAdminDashboard />} />
             <Route element={<MainLayout />}>

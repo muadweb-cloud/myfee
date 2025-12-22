@@ -31,27 +31,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
 
   const checkOnboardingStatus = async (userId: string) => {
-    try {
-      const { data: profile } = await supabase
-        .from("admin_profiles")
-        .select("school_id")
-        .eq("id", userId)
-        .single();
-
-      if (profile?.school_id) {
-        const { data: school } = await supabase
-          .from("schools")
-          .select("school_name")
-          .eq("id", profile.school_id)
-          .single();
-
-        // Check if school_name is the default "My School" (needs onboarding)
-        return school?.school_name === "My School";
-      }
-      return true; // No school_id means needs onboarding
-    } catch {
-      return false;
-    }
+    // Onboarding is no longer required - always return false
+    return false;
   };
 
   useEffect(() => {
