@@ -20,6 +20,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Billing from "./pages/Billing";
+import Contact from "./pages/Contact";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/billing" element={<Billing />} />
+                <Route path="/contact" element={<Contact />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
