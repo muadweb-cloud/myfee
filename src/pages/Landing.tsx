@@ -56,7 +56,7 @@ const Landing = () => {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to="/auth">
+              <Link to="/auth?tab=signup">
                 <Button size="lg" className="gap-2 w-full sm:w-auto">
                   Start Free Trial <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -183,7 +183,7 @@ const Landing = () => {
           <p className="text-muted-foreground max-w-xl mx-auto">
             Start your 7-day free trial today and experience the difference in fee management.
           </p>
-          <Link to="/auth">
+          <Link to="/auth?tab=signup">
             <Button size="lg" className="gap-2">
               Start Your Free Trial <ArrowRight className="h-4 w-4" />
             </Button>
