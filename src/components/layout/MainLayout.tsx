@@ -1,4 +1,4 @@
-import { Link, useLocation, Outlet, Navigate } from "react-router-dom";
+import { Link, useLocation, Outlet, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -18,7 +18,7 @@ import {
   Sun,
   MessageCircle,
 } from "lucide-react";
-import { useSubscription } from "@/hooks/useSubscription";
+import { useOfflineData } from "@/contexts/OfflineDataContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/NotificationBell";
@@ -27,7 +27,8 @@ import { useTheme } from "next-themes";
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
   const location = useLocation();
-  const { subscription } = useSubscription();
+  const navigate = useNavigate();
+  const { subscription } = useOfflineData();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -53,9 +54,22 @@ const MainLayout = () => {
     checkSuperAdmin();
   }, [user]);
 
+  // Handle subscription expiry redirect
+  useEffect(() => {
+    if (!subscription) return;
+    
+    const isExpired = subscription.status === "expired";
+    const isTrialExpired = subscription.status === "trial" && subscription.trialDaysRemaining <= 0;
+    
+    if (isExpired || isTrialExpired) {
+      const currentPath = location.pathname;
+      if (currentPath !== '/billing' && !currentPath.startsWith('/superadmin')) {
+        navigate('/billing');
+      }
+    }
+  }, [subscription, location.pathname, navigate]);
+
   // Sync is now handled by OfflineDataContext
-
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
