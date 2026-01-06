@@ -113,6 +113,11 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
+  const updatePendingCount = useCallback(async () => {
+    const ops = await listOfflineOps();
+    setPendingOpsCount(ops.length);
+  }, []);
+
   // Track online/offline
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -125,23 +130,62 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, []);
 
-  // Sync when coming back online - but DON'T overwrite local data
+  // Sync when coming back online - push local changes, then merge with server
   useEffect(() => {
     if (isOnline && schoolId) {
-      syncOfflineQueue(supabase).then(({ synced }) => {
+      (async () => {
+        const { synced } = await syncOfflineQueue(supabase);
+        await updatePendingCount();
+        
+        // After syncing offline ops, fetch server data and merge with local
         if (synced > 0) {
-          setLastSyncedAt(new Date());
-          window.dispatchEvent(new Event("offline-sync"));
-        }
-        updatePendingCount();
-      });
-    }
-  }, [isOnline, schoolId]);
+          try {
+            const [studentsRes, paymentsRes, feesRes] = await Promise.all([
+              supabase
+                .from("students")
+                .select("*, fee_structures (class_name)")
+                .eq("school_id", schoolId)
+                .order("admission_no"),
+              supabase
+                .from("payments")
+                .select("*, students (full_name)")
+                .eq("school_id", schoolId)
+                .order("payment_date", { ascending: false }),
+              supabase.from("fee_structures").select("*").eq("school_id", schoolId).order("class_name"),
+            ]);
 
-  const updatePendingCount = useCallback(async () => {
-    const ops = await listOfflineOps();
-    setPendingOpsCount(ops.length);
-  }, []);
+            const serverStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
+              ...s,
+              class_name: s.fee_structures?.class_name || "N/A",
+            }));
+            const serverPayments: Payment[] = (paymentsRes.data || []).map((p: any) => ({
+              ...p,
+              student_name: p.students?.full_name || "N/A",
+            }));
+            const serverFees: FeeStructure[] = feesRes.data || [];
+
+            // Update state with server data (which now includes synced local changes)
+            setStudents(serverStudents);
+            setPayments(serverPayments);
+            setFeeStructures(serverFees);
+
+            // Update cache
+            await Promise.all([
+              setOfflineCache(makeCacheKey(schoolId, "students"), serverStudents),
+              setOfflineCache(makeCacheKey(schoolId, "payments"), serverPayments),
+              setOfflineCache(makeCacheKey(schoolId, "fee_structures"), serverFees),
+              setOfflineCache(`${schoolId}:last_synced`, new Date().toISOString()),
+            ]);
+
+            setLastSyncedAt(new Date());
+            window.dispatchEvent(new Event("offline-sync"));
+          } catch (err) {
+            console.error("Error refreshing after auto-sync:", err);
+          }
+        }
+      })();
+    }
+  }, [isOnline, schoolId, updatePendingCount]);
 
   // Manual sync trigger - refreshes data after syncing to get server-generated IDs
   const syncNow = useCallback(async (): Promise<{ synced: number; failed: number }> => {
