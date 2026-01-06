@@ -15,6 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { enqueueOfflineOp, getOfflineCache, isOffline, makeCacheKey, setOfflineCache } from "@/lib/offlineQueue";
 
 interface Payment {
   id: string;
@@ -74,12 +75,28 @@ const Payments = () => {
       fetchPayments();
       fetchStudents();
       fetchClasses();
+
+      const onSynced = () => {
+        if (!isOffline()) {
+          fetchPayments();
+          fetchStudents();
+          fetchClasses();
+        }
+      };
+      window.addEventListener("offline-sync", onSynced);
+      return () => window.removeEventListener("offline-sync", onSynced);
     }
   }, [schoolId]);
 
   const fetchClasses = async () => {
     if (!schoolId) return;
-    
+
+    if (isOffline()) {
+      const cached = await getOfflineCache<FeeClass[]>(makeCacheKey(schoolId, "fee_structures"));
+      setClasses((cached || []).map((c: any) => ({ id: c.id, class_name: c.class_name })));
+      return;
+    }
+
     const { data, error } = await supabase
       .from("fee_structures")
       .select("id, class_name")
@@ -88,12 +105,19 @@ const Payments = () => {
 
     if (!error && data) {
       setClasses(data);
+      await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), data);
     }
   };
 
   const fetchStudents = async () => {
     if (!schoolId) return;
-    
+
+    if (isOffline()) {
+      const cached = await getOfflineCache<Student[]>(makeCacheKey(schoolId, "students"));
+      setStudents(cached || []);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("students")
       .select("id, admission_no, full_name, total_fee, class_id")
@@ -102,6 +126,7 @@ const Payments = () => {
 
     if (!error && data) {
       setStudents(data);
+      await setOfflineCache(makeCacheKey(schoolId, "students"), data);
     }
   };
 
@@ -110,15 +135,27 @@ const Payments = () => {
     setFormData({ ...formData, student_id: "" });
     setSelectedStudent(null);
     setTotalPaid(0);
-    
-    const studentsInClass = students.filter(s => s.class_id === classId);
+
+    const studentsInClass = students.filter((s) => s.class_id === classId);
     setFilteredStudents(studentsInClass);
   };
 
   const fetchPayments = async () => {
     if (!schoolId) return;
-    
+
     setLoading(true);
+
+    if (isOffline()) {
+      const cached = await getOfflineCache<Payment[]>(makeCacheKey(schoolId, "payments"));
+      setPayments(cached || []);
+      setLoading(false);
+      toast({
+        title: "Offline mode",
+        description: "Showing last saved data. New changes will sync when internet returns.",
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from("payments")
       .select(`
@@ -134,22 +171,31 @@ const Payments = () => {
         student_name: payment.students?.full_name || "N/A",
       }));
       setPayments(formattedData);
+      await setOfflineCache(makeCacheKey(schoolId, "payments"), formattedData);
     }
     setLoading(false);
   };
 
   const handleStudentChange = async (studentId: string) => {
     setFormData({ ...formData, student_id: studentId });
-    
-    const student = students.find(s => s.id === studentId);
+
+    const student = students.find((s) => s.id === studentId);
     setSelectedStudent(student || null);
 
     if (student) {
+      if (isOffline()) {
+        // best effort in offline mode: compute from local cached payments
+        const cached = await getOfflineCache<Payment[]>(makeCacheKey(schoolId || "", "payments"));
+        const total =
+          cached
+            ?.filter((p) => p.student_id === studentId)
+            .reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+        setTotalPaid(total);
+        return;
+      }
+
       // Fetch total paid by this student
-      const { data } = await supabase
-        .from("payments")
-        .select("amount")
-        .eq("student_id", studentId);
+      const { data } = await supabase.from("payments").select("amount").eq("student_id", studentId);
 
       const total = data?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
       setTotalPaid(total);
@@ -187,15 +233,59 @@ const Payments = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from("payments")
-      .insert([{
+    if (isOffline()) {
+      const tempId = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+      const studentName = students.find((s) => s.id === formData.student_id)?.full_name;
+      const nowIso = new Date().toISOString();
+
+      const localPayment: Payment = {
+        id: tempId,
+        student_id: formData.student_id,
+        amount,
+        payment_method: formData.payment_method,
+        notes: formData.notes || null,
+        payment_date: nowIso,
+        receipt_number: `OFF-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}`,
+        student_name: studentName || "N/A",
+      };
+
+      const next = [localPayment, ...payments];
+      setPayments(next);
+      await setOfflineCache(makeCacheKey(schoolId, "payments"), next);
+
+      await enqueueOfflineOp({
+        table: "payments",
+        type: "insert",
+        payload: {
+          student_id: formData.student_id,
+          amount,
+          payment_method: formData.payment_method,
+          notes: formData.notes || null,
+          school_id: schoolId,
+          payment_date: nowIso,
+          receipt_number: localPayment.receipt_number,
+        },
+        tempId,
+      });
+
+      toast({
+        title: "Saved offline",
+        description: "Payment will sync automatically when internet returns.",
+      });
+      fetchPayments();
+      closeDialog();
+      return;
+    }
+
+    const { error } = await supabase.from("payments").insert([
+      {
         student_id: formData.student_id,
         amount: amount,
         payment_method: formData.payment_method,
         notes: formData.notes || null,
         school_id: schoolId,
-      }]);
+      },
+    ]);
 
     if (error) {
       toast({
@@ -204,8 +294,8 @@ const Payments = () => {
         variant: "destructive",
       });
     } else {
-      toast({ 
-        title: "Success", 
+      toast({
+        title: "Success",
         description: "Payment recorded successfully",
       });
       fetchPayments();
@@ -259,6 +349,38 @@ const Payments = () => {
         description: "Please enter a valid amount",
         variant: "destructive",
       });
+      return;
+    }
+
+    if (!schoolId) return;
+
+    if (isOffline()) {
+      const updated: Payment = {
+        ...editingPayment,
+        amount,
+        payment_method: editFormData.payment_method,
+        notes: editFormData.notes || null,
+      };
+
+      const next = payments.map((p) => (p.id === editingPayment.id ? updated : p));
+      setPayments(next);
+      await setOfflineCache(makeCacheKey(schoolId, "payments"), next);
+      await enqueueOfflineOp({
+        table: "payments",
+        type: "update",
+        rowId: editingPayment.id,
+        patch: {
+          amount,
+          payment_method: editFormData.payment_method,
+          notes: editFormData.notes || null,
+        },
+      });
+
+      toast({
+        title: "Saved offline",
+        description: "Payment update will sync automatically when internet returns.",
+      });
+      closeEditDialog();
       return;
     }
 

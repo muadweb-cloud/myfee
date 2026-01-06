@@ -2,12 +2,12 @@ import { Link, useLocation, Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { 
-  LayoutDashboard, 
-  Users, 
-  DollarSign, 
-  FileText, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  FileText,
+  Settings,
   LogOut,
   GraduationCap,
   BookOpen,
@@ -16,13 +16,15 @@ import {
   Menu,
   Moon,
   Sun,
-  MessageCircle
+  MessageCircle,
 } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/NotificationBell";
 import { useTheme } from "next-themes";
+import { toast } from "@/hooks/use-toast";
+import { syncOfflineQueue } from "@/lib/offlineQueue";
 
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
@@ -39,7 +41,7 @@ const MainLayout = () => {
   useEffect(() => {
     const checkSuperAdmin = async () => {
       if (!user) return;
-      
+
       const { data } = await supabase
         .from("user_roles")
         .select("role")
@@ -52,6 +54,30 @@ const MainLayout = () => {
 
     checkSuperAdmin();
   }, [user]);
+
+  useEffect(() => {
+    // Best-effort sync: if user added data while offline, push it when connection returns.
+    const syncNow = async () => {
+      const result = await syncOfflineQueue(supabase);
+      if (result.synced > 0) {
+        toast({
+          title: "Synced",
+          description: `${result.synced} offline change(s) uploaded.`,
+        });
+      }
+    };
+
+    const onOnline = () => {
+      toast({ title: "Back online", description: "Syncing offline changes..." });
+      syncNow();
+      window.dispatchEvent(new Event("offline-sync"));
+    };
+
+    syncNow();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
+
 
   if (loading) {
     return (
