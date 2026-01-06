@@ -1,3 +1,4 @@
+// Offline-first data context for school management
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSchoolId } from "@/hooks/useSchoolId";
@@ -9,9 +10,7 @@ import {
   enqueueOfflineOp,
   syncOfflineQueue,
   listOfflineOps,
-  OfflineOpInput,
 } from "@/lib/offlineQueue";
-import { OfflineSubscription } from "@/hooks/useOfflineSubscription";
 
 export interface Student {
   id: string;
