@@ -23,8 +23,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/NotificationBell";
 import { useTheme } from "next-themes";
-import { toast } from "@/hooks/use-toast";
-import { syncOfflineQueue } from "@/lib/offlineQueue";
 
 const MainLayout = () => {
   const { user, signOut, loading } = useAuth();
@@ -55,28 +53,7 @@ const MainLayout = () => {
     checkSuperAdmin();
   }, [user]);
 
-  useEffect(() => {
-    // Best-effort sync: if user added data while offline, push it when connection returns.
-    const syncNow = async () => {
-      const result = await syncOfflineQueue(supabase);
-      if (result.synced > 0) {
-        toast({
-          title: "Synced",
-          description: `${result.synced} offline change(s) uploaded.`,
-        });
-      }
-    };
-
-    const onOnline = () => {
-      toast({ title: "Back online", description: "Syncing offline changes..." });
-      syncNow();
-      window.dispatchEvent(new Event("offline-sync"));
-    };
-
-    syncNow();
-    window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-  }, []);
+  // Sync is now handled by OfflineDataContext
 
 
   if (loading) {

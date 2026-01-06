@@ -1,11 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, DollarSign, TrendingUp, AlertCircle, Calendar, Target, CalendarClock, BarChart3 } from "lucide-react";
+import { Users, DollarSign, TrendingUp, AlertCircle, CalendarClock, BarChart3 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { useSchoolId } from "@/hooks/useSchoolId";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,27 +12,8 @@ import appIcon from "@/assets/app-icon.png";
 import SubscriptionExpiryWarning from "@/components/SubscriptionExpiryWarning";
 import TargetSettingDialog from "@/components/TargetSettingDialog";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-
-interface DashboardStats {
-  totalStudents: number;
-  totalExpectedFees: number;
-  totalCollectedFees: number;
-  totalBalance: number;
-}
-
-interface RecentPayment {
-  id: string;
-  student_name: string;
-  amount: number;
-  payment_date: string;
-}
-
-interface MonthlyData {
-  month: string;
-  monthKey: string;
-  collected: number;
-  target: number;
-}
+import { useOfflineData } from "@/contexts/OfflineDataContext";
+import { useState } from "react";
 
 interface ChartDataPoint {
   label: string;
@@ -44,147 +23,83 @@ interface ChartDataPoint {
 type TimeRange = '48hours' | '30days' | '3months' | '1year';
 
 const Dashboard = () => {
-  const { schoolId } = useSchoolId();
   const { subscription } = useSubscription();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalStudents: 0,
-    totalExpectedFees: 0,
-    totalCollectedFees: 0,
-    totalBalance: 0
-  });
-  const [recentPayments, setRecentPayments] = useState<RecentPayment[]>([]);
-  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [monthlyTarget, setMonthlyTarget] = useState(0);
-  const [schoolName, setSchoolName] = useState("");
-  const [currentMonthCollected, setCurrentMonthCollected] = useState(0);
-  const [targetDialogOpen, setTargetDialogOpen] = useState(false);
+  const { students, payments, schoolInfo, loading, pendingOpsCount, isOnline } = useOfflineData();
   
-  // Fee graph states
-  const [allPayments, setAllPayments] = useState<{ amount: number; payment_date: string }[]>([]);
   const [feeGraphRange, setFeeGraphRange] = useState<TimeRange>('30days');
+  const [targetDialogOpen, setTargetDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (schoolId) {
-      fetchDashboardData();
-    }
-  }, [schoolId]);
+  // Calculate stats from local data
+  const stats = useMemo(() => {
+    const totalStudents = students.length;
+    const totalExpectedFees = students.reduce((sum, s) => sum + Number(s.total_fee || 0), 0);
+    const totalCollectedFees = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const totalBalance = totalExpectedFees - totalCollectedFees;
+    return { totalStudents, totalExpectedFees, totalCollectedFees, totalBalance };
+  }, [students, payments]);
 
-  const fetchDashboardData = async () => {
-    if (!schoolId) return;
-    try {
-      // Fetch school data
-      const { data: schoolData } = await supabase
-        .from("schools")
-        .select("monthly_target, school_name")
-        .eq("id", schoolId)
-        .single();
-      
-      const target = schoolData?.monthly_target || 0;
-      setMonthlyTarget(target);
-      setSchoolName(schoolData?.school_name || "");
+  // Recent payments (last 5)
+  const recentPayments = useMemo(() => {
+    return payments.slice(0, 5).map((p) => ({
+      id: p.id,
+      student_name: p.student_name || "N/A",
+      amount: p.amount,
+      payment_date: p.payment_date,
+    }));
+  }, [payments]);
 
-      // Fetch total students
-      const { count: studentCount } = await supabase
-        .from("students")
-        .select("*", { count: "exact", head: true })
-        .eq("school_id", schoolId);
+  // Monthly target data
+  const monthlyTarget = schoolInfo?.monthly_target || 0;
 
-      // Fetch total expected fees from students
-      const { data: students } = await supabase
-        .from("students")
-        .select("total_fee")
-        .eq("school_id", schoolId);
-      
-      const totalExpected = students?.reduce((sum, student) => sum + Number(student.total_fee || 0), 0) || 0;
-
-      // Fetch all payments (for graph and calculations)
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("amount, payment_date")
-        .eq("school_id", schoolId)
-        .order("payment_date", { ascending: true });
-      
-      setAllPayments(payments || []);
-      
-      const totalCollected = payments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
-
-      // Fetch recent payments with student names
-      const { data: recentPaymentsData } = await supabase
-        .from("payments")
-        .select(`
-          id,
-          amount,
-          payment_date,
-          students (full_name)
-        `)
-        .eq("school_id", schoolId)
-        .order("payment_date", { ascending: false })
-        .limit(5);
-      
-      const formattedPayments = recentPaymentsData?.map((payment: any) => ({
-        id: payment.id,
-        student_name: payment.students?.full_name || "N/A",
-        amount: payment.amount,
-        payment_date: payment.payment_date
-      })) || [];
-
-      // Process monthly data for last 12 months
-      const monthlyMap = new Map<string, number>();
-      const now = new Date();
-      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-      // Initialize last 12 months
-      for (let i = 11; i >= 0; i--) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
+  const currentMonthCollected = useMemo(() => {
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return payments
+      .filter((p) => {
+        if (!p.payment_date) return false;
+        const date = new Date(p.payment_date);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthlyMap.set(key, 0);
-      }
+        return key === currentMonthKey;
+      })
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+  }, [payments]);
 
-      // Aggregate payments by month
-      payments?.forEach(payment => {
-        if (payment.payment_date) {
-          const date = new Date(payment.payment_date);
-          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          if (monthlyMap.has(key)) {
-            monthlyMap.set(key, (monthlyMap.get(key) || 0) + Number(payment.amount));
-          }
-        }
-      });
+  // Monthly data for bar chart
+  const monthlyData = useMemo(() => {
+    const monthlyMap = new Map<string, number>();
+    const now = new Date();
 
-      // Convert to array with formatted labels
-      const monthlyArray: MonthlyData[] = Array.from(monthlyMap.entries()).map(([key, collected]) => {
-        const [year, month] = key.split('-');
-        const date = new Date(parseInt(year), parseInt(month) - 1);
-        return {
-          monthKey: key,
-          month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-          collected,
-          target: target
-        };
-      });
-
-      // Get current month's collection for the target progress
-      const thisMonthCollection = monthlyMap.get(currentMonthKey) || 0;
-      setCurrentMonthCollected(thisMonthCollection);
-      
-      setStats({
-        totalStudents: studentCount || 0,
-        totalExpectedFees: totalExpected,
-        totalCollectedFees: totalCollected,
-        totalBalance: totalExpected - totalCollected
-      });
-      setRecentPayments(formattedPayments);
-      setMonthlyData(monthlyArray);
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-    } finally {
-      setLoading(false);
+    // Initialize last 12 months
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      monthlyMap.set(key, 0);
     }
-  };
 
-  // Calculate chart data based on selected range
+    payments.forEach((payment) => {
+      if (payment.payment_date) {
+        const date = new Date(payment.payment_date);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyMap.has(key)) {
+          monthlyMap.set(key, (monthlyMap.get(key) || 0) + Number(payment.amount));
+        }
+      }
+    });
+
+    return Array.from(monthlyMap.entries()).map(([key, collected]) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year), parseInt(month) - 1);
+      return {
+        monthKey: key,
+        month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+        collected,
+        target: monthlyTarget,
+      };
+    });
+  }, [payments, monthlyTarget]);
+
+  // Fee chart data based on selected range
   const feeChartData = useMemo((): ChartDataPoint[] => {
     const now = new Date();
     let startDate: Date;
@@ -212,24 +127,21 @@ const Dashboard = () => {
         groupBy = 'day';
     }
 
-    // Filter payments within range
-    const filteredPayments = allPayments.filter(p => {
+    const filteredPayments = payments.filter((p) => {
       const paymentDate = new Date(p.payment_date);
       return paymentDate >= startDate && paymentDate <= now;
     });
 
-    // Group payments
     const grouped = new Map<string, number>();
 
     if (groupBy === 'hour') {
-      // Initialize all hours
       for (let i = 47; i >= 0; i--) {
         const date = new Date(now.getTime() - i * 60 * 60 * 1000);
         const key = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`;
         grouped.set(key, 0);
       }
       
-      filteredPayments.forEach(p => {
+      filteredPayments.forEach((p) => {
         const date = new Date(p.payment_date);
         const key = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`;
         if (grouped.has(key)) {
@@ -244,7 +156,7 @@ const Dashboard = () => {
         grouped.set(key, 0);
       }
       
-      filteredPayments.forEach(p => {
+      filteredPayments.forEach((p) => {
         const date = new Date(p.payment_date);
         const key = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         if (grouped.has(key)) {
@@ -252,7 +164,6 @@ const Dashboard = () => {
         }
       });
     } else {
-      // Monthly
       for (let i = 11; i >= 0; i--) {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
@@ -260,7 +171,7 @@ const Dashboard = () => {
         grouped.set(key, 0);
       }
       
-      filteredPayments.forEach(p => {
+      filteredPayments.forEach((p) => {
         const date = new Date(p.payment_date);
         const key = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
         if (grouped.has(key)) {
@@ -270,26 +181,24 @@ const Dashboard = () => {
     }
 
     return Array.from(grouped.entries()).map(([label, amount]) => ({ label, amount }));
-  }, [allPayments, feeGraphRange]);
+  }, [payments, feeGraphRange]);
 
-  // Calculate total for selected range
   const rangeTotal = useMemo(() => {
     return feeChartData.reduce((sum, d) => sum + d.amount, 0);
   }, [feeChartData]);
 
-  // Calculate percentages using memoization for performance
-  const collectionPercentage = useMemo(() => 
-    stats.totalExpectedFees > 0 ? Math.round(stats.totalCollectedFees / stats.totalExpectedFees * 100) : 0, 
+  const collectionPercentage = useMemo(
+    () => (stats.totalExpectedFees > 0 ? Math.round((stats.totalCollectedFees / stats.totalExpectedFees) * 100) : 0),
     [stats.totalCollectedFees, stats.totalExpectedFees]
   );
-  
-  const targetPercentage = useMemo(() => 
-    monthlyTarget > 0 ? Math.min(Math.round(currentMonthCollected / monthlyTarget * 100), 100) : 0, 
+
+  const targetPercentage = useMemo(
+    () => (monthlyTarget > 0 ? Math.min(Math.round((currentMonthCollected / monthlyTarget) * 100), 100) : 0),
     [currentMonthCollected, monthlyTarget]
   );
-  
-  const maxMonthlyCollection = useMemo(() => 
-    Math.max(...monthlyData.map(d => d.collected), monthlyTarget || 1), 
+
+  const maxMonthlyCollection = useMemo(
+    () => Math.max(...monthlyData.map((d) => d.collected), monthlyTarget || 1),
     [monthlyData, monthlyTarget]
   );
 
@@ -323,12 +232,27 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Offline indicator */}
+      {(!isOnline || pendingOpsCount > 0) && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                {!isOnline ? "You're offline. " : ""}
+                {pendingOpsCount > 0 ? `${pendingOpsCount} change${pendingOpsCount > 1 ? 's' : ''} pending sync.` : "Data shown from cache."}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <img src={appIcon} alt="School Fee System" className="h-12 w-12 object-contain" />
           <div>
-            <h1 className="text-3xl font-bold text-foreground">{schoolName || "Dashboard"}</h1>
+            <h1 className="text-3xl font-bold text-foreground">{schoolInfo?.school_name || "Dashboard"}</h1>
             <p className="text-muted-foreground">Welcome back! Here's your school's financial overview</p>
           </div>
         </div>
@@ -445,42 +369,40 @@ const Dashboard = () => {
       <TargetSettingDialog
         open={targetDialogOpen}
         onOpenChange={setTargetDialogOpen}
-        schoolId={schoolId || ''}
+        schoolId={schoolInfo?.id || ''}
         currentTarget={monthlyTarget}
         expectedFees={stats.totalExpectedFees}
-        onTargetUpdated={fetchDashboardData}
+        onTargetUpdated={() => {}}
       />
 
       {/* Fee Collection Graph */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                Fee Collection Trends
-              </CardTitle>
-              <CardDescription className="mt-1">
-                Total collected: {formatCurrency(rangeTotal)}
-              </CardDescription>
-            </div>
-            <Select value={feeGraphRange} onValueChange={(v) => setFeeGraphRange(v as TimeRange)}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="48hours">Last 48 Hours</SelectItem>
-                <SelectItem value="30days">Last 30 Days</SelectItem>
-                <SelectItem value="3months">Last 3 Months</SelectItem>
-                <SelectItem value="1year">Last Year</SelectItem>
-              </SelectContent>
-            </Select>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-primary" />
+              Fee Collection Trend
+            </CardTitle>
+            <CardDescription>
+              Total collected: {formatCurrency(rangeTotal)}
+            </CardDescription>
           </div>
+          <Select value={feeGraphRange} onValueChange={(v) => setFeeGraphRange(v as TimeRange)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="48hours">Last 48 Hours</SelectItem>
+              <SelectItem value="30days">Last 30 Days</SelectItem>
+              <SelectItem value="3months">Last 3 Months</SelectItem>
+              <SelectItem value="1year">Last Year</SelectItem>
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={feeChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <AreaChart data={feeChartData}>
                 <defs>
                   <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -490,33 +412,31 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis 
                   dataKey="label" 
-                  className="text-xs" 
-                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                  tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-                  interval={feeGraphRange === '48hours' ? 5 : feeGraphRange === '30days' ? 4 : feeGraphRange === '3months' ? 14 : 1}
+                  tick={{ fontSize: 10 }} 
+                  interval="preserveStartEnd"
+                  tickLine={false}
+                  axisLine={false}
                 />
                 <YAxis 
-                  className="text-xs"
-                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                  tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(value) => formatCurrency(value).replace(/\.00$/, '')}
+                  tickFormatter={(value) => formatCurrency(value)}
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
                 />
                 <Tooltip 
+                  formatter={(value: number) => [formatCurrency(value), 'Collected']}
                   contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))', 
+                    backgroundColor: 'hsl(var(--background))',
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px'
                   }}
-                  labelStyle={{ color: 'hsl(var(--foreground))' }}
-                  formatter={(value: number) => [formatCurrency(value), 'Amount']}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="amount" 
-                  stroke="hsl(var(--primary))" 
+                <Area
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="hsl(var(--primary))"
                   strokeWidth={2}
-                  fillOpacity={1} 
-                  fill="url(#colorAmount)" 
+                  fill="url(#colorAmount)"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -524,194 +444,106 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Monthly Target Progress - Uses current month's collection */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Monthly Target Progress */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-primary" />
-                Monthly Target Progress
-              </CardTitle>
-              <CardDescription className="mt-1">
-                {currentMonth} collection vs target
-              </CardDescription>
+              <CardTitle className="text-lg">Monthly Target</CardTitle>
+              <CardDescription>{currentMonth}</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              {monthlyTarget > 0 && (
-                <Badge variant={targetPercentage >= 100 ? "default" : targetPercentage >= 50 ? "secondary" : "outline"}>
-                  {targetPercentage >= 100 ? "Target Met!" : `${targetPercentage}% Complete`}
-                </Badge>
-              )}
-              <Button variant="outline" size="sm" onClick={() => setTargetDialogOpen(true)}>
-                Set Target
-              </Button>
+            <Button variant="outline" size="sm" onClick={() => setTargetDialogOpen(true)}>
+              Set Target
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Collected</span>
+              <span className="font-semibold text-green-600 dark:text-green-400">
+                {formatCurrency(currentMonthCollected)}
+              </span>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {monthlyTarget > 0 ? (
-            <div className="space-y-4">
-              <div className="relative h-12 bg-muted rounded-lg overflow-hidden">
-                <div 
-                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-primary/70 rounded-lg flex items-center transition-all duration-700 ease-out" 
-                  style={{ width: `${Math.min(targetPercentage, 100)}%` }}
-                >
-                  {targetPercentage >= 15 && (
-                    <span className="absolute right-3 text-sm font-bold text-primary-foreground">
-                      {targetPercentage}%
-                    </span>
-                  )}
-                </div>
-                {targetPercentage < 15 && (
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-primary-foreground">
-                    {targetPercentage}%
-                  </span>
-                )}
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Target</span>
+              <span className="font-semibold">{formatCurrency(monthlyTarget)}</span>
+            </div>
+            <div className="relative pt-1">
+              <div className="flex mb-2 items-center justify-between">
+                <span className="text-xs font-semibold inline-block text-primary">
+                  {targetPercentage}% Complete
+                </span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <div className="space-y-0.5">
-                  <p className="text-muted-foreground">This Month's Collection</p>
-                  <p className="text-xl font-bold text-foreground">{formatCurrency(currentMonthCollected)}</p>
-                </div>
-                <div className="text-right space-y-0.5">
-                  <p className="text-muted-foreground">Monthly Target</p>
-                  <p className="text-xl font-bold text-foreground">{formatCurrency(monthlyTarget)}</p>
-                </div>
+              <div className="overflow-hidden h-3 text-xs flex rounded-full bg-muted">
+                <div
+                  style={{ width: `${targetPercentage}%` }}
+                  className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary transition-all duration-500"
+                />
               </div>
             </div>
-          ) : (
-            <div className="text-center py-6 text-muted-foreground">
-              <Target className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>No monthly target set</p>
-              <p className="text-sm mt-1">Set your target in Settings to track progress</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* 12-Month Analysis - Shows collection vs monthly target */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
-            12-Month Fee Collection Analysis
-          </CardTitle>
-          <CardDescription>
-            Monthly collections compared to your target of {formatCurrency(monthlyTarget)}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {monthlyData.map((data, index) => {
-              const isCurrentMonth = data.monthKey === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-              const percentage = maxMonthlyCollection > 0 ? data.collected / maxMonthlyCollection * 100 : 0;
-              const targetMet = monthlyTarget > 0 && data.collected >= monthlyTarget;
-              
-              return (
-                <div 
-                  key={data.monthKey} 
-                  className={`flex items-center gap-4 p-2 rounded-lg transition-colors ${isCurrentMonth ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'}`}
-                >
-                  <div className="w-20 text-sm font-medium flex items-center gap-2">
-                    {data.month}
-                    {isCurrentMonth && <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />}
-                  </div>
-                  <div className="flex-1 relative">
-                    <div className="h-8 bg-muted rounded-md overflow-hidden">
-                      <div 
-                        className={`h-full rounded-md transition-all duration-500 ${targetMet ? 'bg-green-500' : 'bg-primary/80'}`} 
-                        style={{ width: `${percentage}%`, animationDelay: `${index * 50}ms` }} 
+            {/* Monthly bar chart */}
+            <div className="pt-4">
+              <p className="text-sm font-medium mb-3">Last 12 Months</p>
+              <div className="flex items-end justify-between gap-1 h-24">
+                {monthlyData.map((data, index) => {
+                  const height = maxMonthlyCollection > 0 ? (data.collected / maxMonthlyCollection) * 100 : 0;
+                  const isCurrentMonth = index === monthlyData.length - 1;
+                  return (
+                    <div key={data.monthKey} className="flex-1 flex flex-col items-center">
+                      <div
+                        className={`w-full rounded-t transition-all duration-300 ${
+                          isCurrentMonth ? 'bg-primary' : 'bg-muted-foreground/30'
+                        }`}
+                        style={{ height: `${Math.max(height, 4)}%` }}
+                        title={`${data.month}: ${formatCurrency(data.collected)}`}
                       />
+                      <span className="text-[8px] text-muted-foreground mt-1 truncate w-full text-center">
+                        {data.month.split(' ')[0]}
+                      </span>
                     </div>
-                    {/* Target line indicator */}
-                    {monthlyTarget > 0 && maxMonthlyCollection > 0 && (
-                      <div 
-                        className="absolute top-0 bottom-0 w-0.5 bg-amber-500/80" 
-                        style={{ left: `${monthlyTarget / maxMonthlyCollection * 100}%` }} 
-                        title={`Target: ${formatCurrency(monthlyTarget)}`} 
-                      />
-                    )}
-                  </div>
-                  <div className="w-28 text-right">
-                    <span className={`text-sm font-semibold ${targetMet ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
-                      {formatCurrency(data.collected)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {monthlyTarget > 0 && (
-            <div className="flex items-center gap-4 mt-4 pt-4 border-t text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-primary/80 rounded" />
-                <span>Collection</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded" />
-                <span>Target Met</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-0.5 h-3 bg-amber-500" />
-                <span>Monthly Target ({formatCurrency(monthlyTarget)})</span>
+                  );
+                })}
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Recent Payments */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            Recent Payments
-          </CardTitle>
-          <CardDescription>Latest fee payments received</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentPayments.length === 0 ? (
-            <div className="text-center py-8">
-              <DollarSign className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-muted-foreground">No payments recorded yet</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
+        {/* Recent Payments */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Recent Payments</CardTitle>
+            <CardDescription>Latest fee payments received</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentPayments.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">No payments recorded yet</p>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Date</TableHead>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Date</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentPayments.map((payment, index) => (
-                    <TableRow 
-                      key={payment.id} 
-                      className="animate-fade-in" 
-                      style={{ animationDelay: `${index * 100}ms` }}
-                    >
+                  {recentPayments.map((payment) => (
+                    <TableRow key={payment.id}>
                       <TableCell className="font-medium">{payment.student_name}</TableCell>
-                      <TableCell className="text-right font-semibold text-green-600 dark:text-green-400">
+                      <TableCell className="text-green-600 dark:text-green-400 font-semibold">
                         {formatCurrency(payment.amount)}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {new Date(payment.payment_date).toLocaleDateString('en-US', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric'
-                        })}
+                      <TableCell className="text-muted-foreground">
+                        {new Date(payment.payment_date).toLocaleDateString()}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

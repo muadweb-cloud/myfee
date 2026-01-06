@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,24 +7,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { useSchoolId } from "@/hooks/useSchoolId";
-import { enqueueOfflineOp, getOfflineCache, isOffline, makeCacheKey, setOfflineCache } from "@/lib/offlineQueue";
-
-interface FeeStructure {
-  id: string;
-  class_name: string;
-  fee_amount: number;
-  description: string | null;
-}
+import { useOfflineData } from "@/contexts/OfflineDataContext";
 
 const FeeStructure = () => {
-  const { schoolId } = useSchoolId();
-  const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+  const { feeStructures, loading, addFeeStructure, updateFeeStructure, deleteFeeStructure, pendingOpsCount, isOnline } = useOfflineData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingStructure, setEditingStructure] = useState<FeeStructure | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [editingStructure, setEditingStructure] = useState<typeof feeStructures[0] | null>(null);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -34,54 +23,8 @@ const FeeStructure = () => {
     description: "",
   });
 
-  useEffect(() => {
-    if (schoolId) {
-      fetchFeeStructures();
-
-      const onSynced = () => {
-        if (!isOffline()) fetchFeeStructures();
-      };
-      window.addEventListener("offline-sync", onSynced);
-      return () => window.removeEventListener("offline-sync", onSynced);
-    }
-  }, [schoolId]);
-
-  const fetchFeeStructures = async () => {
-    if (!schoolId) return;
-
-    setLoading(true);
-
-    if (isOffline()) {
-      const cached = await getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures"));
-      setFeeStructures(cached || []);
-      setLoading(false);
-      toast({
-        title: "Offline mode",
-        description: "Showing last saved data. New changes will sync when internet returns.",
-      });
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("fee_structures")
-      .select("*")
-      .eq("school_id", schoolId)
-      .order("class_name");
-
-    if (!error && data) {
-      setFeeStructures(data);
-      await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), data);
-    }
-    setLoading(false);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!schoolId) {
-      toast({ title: "Error", description: "School ID not found", variant: "destructive" });
-      return;
-    }
 
     if (!formData.class_name || !formData.fee_amount) {
       toast({ title: "Error", description: "Please fill in required fields", variant: "destructive" });
@@ -94,108 +37,29 @@ const FeeStructure = () => {
       return;
     }
 
-    if (editingStructure) {
-      if (isOffline()) {
-        const updated: FeeStructure = {
-          ...editingStructure,
+    try {
+      if (editingStructure) {
+        await updateFeeStructure(editingStructure.id, {
           class_name: formData.class_name,
           fee_amount: feeAmount,
           description: formData.description || null,
-        };
-
-        const next = feeStructures.map((f) => (f.id === editingStructure.id ? updated : f));
-        setFeeStructures(next);
-        await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), next);
-        await enqueueOfflineOp({
-          table: "fee_structures",
-          type: "update",
-          rowId: editingStructure.id,
-          patch: {
-            class_name: formData.class_name,
-            fee_amount: feeAmount,
-            description: formData.description || null,
-          },
         });
-
-        toast({
-          title: "Saved offline",
-          description: "Fee structure update will sync when internet returns.",
-        });
-        closeDialog();
-        return;
-      }
-
-      const { error } = await supabase
-        .from("fee_structures")
-        .update({
-          class_name: formData.class_name,
-          fee_amount: feeAmount,
-          description: formData.description || null,
-        })
-        .eq("id", editingStructure.id);
-
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
+        toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Fee structure updated successfully" : "Update will sync when internet returns." });
       } else {
-        toast({ title: "Success", description: "Fee structure updated successfully" });
-        fetchFeeStructures();
-        closeDialog();
-      }
-    } else {
-      if (isOffline()) {
-        const tempId = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-        const local: FeeStructure = {
-          id: tempId,
+        await addFeeStructure({
           class_name: formData.class_name,
           fee_amount: feeAmount,
           description: formData.description || null,
-        };
-        const next = [...feeStructures, local].sort((a, b) => a.class_name.localeCompare(b.class_name));
-        setFeeStructures(next);
-        await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), next);
-
-        await enqueueOfflineOp({
-          table: "fee_structures",
-          type: "insert",
-          payload: {
-            class_name: formData.class_name,
-            fee_amount: feeAmount,
-            description: formData.description || null,
-            school_id: schoolId,
-          },
-          tempId,
         });
-
-        toast({
-          title: "Saved offline",
-          description: "Fee structure will sync when internet returns.",
-        });
-        closeDialog();
-        return;
+        toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Fee structure added successfully" : "Fee structure will sync when internet returns." });
       }
-
-      const { error } = await supabase
-        .from("fee_structures")
-        .insert([
-          {
-            class_name: formData.class_name,
-            fee_amount: feeAmount,
-            description: formData.description || null,
-            school_id: schoolId,
-          },
-        ]);
-
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-      } else {
-        toast({ title: "Success", description: "Fee structure added successfully" });
-        fetchFeeStructures();
-        closeDialog();
-      }
+      closeDialog();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
-  const handleEdit = (structure: FeeStructure) => {
+  const handleEdit = (structure: typeof feeStructures[0]) => {
     setEditingStructure(structure);
     setFormData({
       class_name: structure.class_name,
@@ -207,24 +71,12 @@ const FeeStructure = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this fee structure? This will affect students assigned to this class.")) return;
-    if (!schoolId) return;
 
-    if (isOffline()) {
-      const next = feeStructures.filter((f) => f.id !== id);
-      setFeeStructures(next);
-      await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), next);
-      await enqueueOfflineOp({ table: "fee_structures", type: "delete", rowId: id });
-      toast({ title: "Saved offline", description: "Delete will sync when internet returns." });
-      return;
-    }
-
-    const { error } = await supabase.from("fee_structures").delete().eq("id", id);
-
-    if (error) {
+    try {
+      await deleteFeeStructure(id);
+      toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Fee structure deleted successfully" : "Delete will sync when internet returns." });
+    } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Fee structure deleted successfully" });
-      fetchFeeStructures();
     }
   };
 
@@ -240,6 +92,21 @@ const FeeStructure = () => {
 
   return (
     <div className="space-y-6">
+      {/* Offline indicator */}
+      {(!isOnline || pendingOpsCount > 0) && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                {!isOnline ? "You're offline. " : ""}
+                {pendingOpsCount > 0 ? `${pendingOpsCount} change${pendingOpsCount > 1 ? 's' : ''} pending sync.` : "Data shown from cache."}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Fee Structure Management</h1>

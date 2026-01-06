@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,41 +7,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { useSchoolId } from "@/hooks/useSchoolId";
 import { useSubscription } from "@/hooks/useSubscription";
-import { enqueueOfflineOp, getOfflineCache, isOffline, makeCacheKey, setOfflineCache } from "@/lib/offlineQueue";
-
-interface Student {
-  id: string;
-  admission_no: string;
-  full_name: string;
-  class_id: string | null;
-  parent_contact: string | null;
-  parent_name: string | null;
-  total_fee: number;
-  class_name?: string;
-}
-
-interface FeeStructure {
-  id: string;
-  class_name: string;
-  fee_amount: number;
-}
+import { useOfflineData } from "@/contexts/OfflineDataContext";
 
 const ITEMS_PER_PAGE = 20;
 
 const Students = () => {
-  const { schoolId } = useSchoolId();
   const { subscription } = useSubscription();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+  const { students, feeStructures, loading, addStudent, updateStudent, deleteStudent, pendingOpsCount, isOnline } = useOfflineData();
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [editingStudent, setEditingStudent] = useState<typeof students[0] | null>(null);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -53,87 +31,8 @@ const Students = () => {
     parent_contact: "",
   });
 
-  useEffect(() => {
-    if (schoolId) {
-      fetchStudents();
-      fetchFeeStructures();
-
-      const onSynced = () => {
-        // After background sync, refresh from server (if online)
-        if (!isOffline()) {
-          fetchStudents();
-          fetchFeeStructures();
-        }
-      };
-      window.addEventListener("offline-sync", onSynced);
-      return () => window.removeEventListener("offline-sync", onSynced);
-    }
-  }, [schoolId]);
-
-  const fetchFeeStructures = async () => {
-    if (!schoolId) return;
-
-    if (isOffline()) {
-      const cached = await getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures"));
-      setFeeStructures(cached || []);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("fee_structures")
-      .select("*")
-      .eq("school_id", schoolId)
-      .order("class_name");
-
-    if (!error && data) {
-      setFeeStructures(data);
-      await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), data);
-    }
-  };
-
-  const fetchStudents = async () => {
-    if (!schoolId) return;
-
-    setLoading(true);
-
-    if (isOffline()) {
-      const cached = await getOfflineCache<Student[]>(makeCacheKey(schoolId, "students"));
-      setStudents(cached || []);
-      setLoading(false);
-      toast({
-        title: "Offline mode",
-        description: "Showing last saved data. New changes will sync when internet returns.",
-      });
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("students")
-      .select(`
-        *,
-        fee_structures (class_name)
-      `)
-      .eq("school_id", schoolId)
-      .order("admission_no");
-
-    if (!error && data) {
-      const formattedData = data.map((student: any) => ({
-        ...student,
-        class_name: student.fee_structures?.class_name || "N/A",
-      }));
-      setStudents(formattedData);
-      await setOfflineCache(makeCacheKey(schoolId, "students"), formattedData);
-    }
-    setLoading(false);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!schoolId) {
-      toast({ title: "Error", description: "School ID not found", variant: "destructive" });
-      return;
-    }
 
     if (!formData.admission_no || !formData.full_name) {
       toast({ title: "Error", description: "Please fill in required fields", variant: "destructive" });
@@ -141,140 +40,45 @@ const Students = () => {
     }
 
     // Check subscription limit when adding new student
-    if (!editingStudent && subscription && !isOffline()) {
-      const currentStudentCount = students.length;
-      if (currentStudentCount >= subscription.maxStudents) {
+    if (!editingStudent && subscription && isOnline) {
+      if (students.length >= subscription.maxStudents) {
         toast({
           title: "Subscription Limit Reached",
-          description: `You have reached the maximum number of students (${subscription.maxStudents}) for your subscription plan. Upgrade to add more students.`,
+          description: `You have reached the maximum number of students (${subscription.maxStudents}) for your subscription plan.`,
           variant: "destructive",
         });
         return;
       }
     }
 
-    if (editingStudent) {
-      if (isOffline()) {
-        const updated: Student = {
-          ...editingStudent,
+    try {
+      if (editingStudent) {
+        await updateStudent(editingStudent.id, {
           admission_no: formData.admission_no,
           full_name: formData.full_name,
           parent_name: formData.parent_name || null,
           class_id: formData.class_id || null,
           parent_contact: formData.parent_contact || null,
-          class_name:
-            feeStructures.find((f) => f.id === (formData.class_id || null))?.class_name ||
-            editingStudent.class_name,
-        };
-
-        const next = students.map((s) => (s.id === editingStudent.id ? updated : s));
-        setStudents(next);
-        await setOfflineCache(makeCacheKey(schoolId, "students"), next);
-        await enqueueOfflineOp({
-          table: "students",
-          type: "update",
-          rowId: editingStudent.id,
-          patch: {
-            admission_no: formData.admission_no,
-            full_name: formData.full_name,
-            parent_name: formData.parent_name || null,
-            class_id: formData.class_id || null,
-            parent_contact: formData.parent_contact || null,
-          },
+          class_name: feeStructures.find((f) => f.id === formData.class_id)?.class_name || editingStudent.class_name,
         });
-
-        toast({
-          title: "Saved offline",
-          description: "Student update will sync automatically when internet returns.",
-        });
-        closeDialog();
-        return;
-      }
-
-      const { error } = await supabase
-        .from("students")
-        .update({
-          admission_no: formData.admission_no,
-          full_name: formData.full_name,
-          parent_name: formData.parent_name || null,
-          class_id: formData.class_id || null,
-          parent_contact: formData.parent_contact || null,
-        })
-        .eq("id", editingStudent.id);
-
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
+        toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Student updated successfully" : "Update will sync when internet returns." });
       } else {
-        toast({ title: "Success", description: "Student updated successfully" });
-        fetchStudents();
-        closeDialog();
-      }
-    } else {
-      if (isOffline()) {
-        const tempId = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-        const className = feeStructures.find((f) => f.id === (formData.class_id || ""))?.class_name;
-
-        const localStudent: Student = {
-          id: tempId,
+        await addStudent({
           admission_no: formData.admission_no,
           full_name: formData.full_name,
           parent_name: formData.parent_name || null,
           class_id: formData.class_id || null,
           parent_contact: formData.parent_contact || null,
-          total_fee: 0,
-          class_name: className || "N/A",
-        };
-
-        const next = [...students, localStudent].sort((a, b) => a.admission_no.localeCompare(b.admission_no));
-        setStudents(next);
-        await setOfflineCache(makeCacheKey(schoolId, "students"), next);
-
-        await enqueueOfflineOp({
-          table: "students",
-          type: "insert",
-          payload: {
-            admission_no: formData.admission_no,
-            full_name: formData.full_name,
-            parent_name: formData.parent_name || null,
-            class_id: formData.class_id || null,
-            parent_contact: formData.parent_contact || null,
-            school_id: schoolId,
-          },
-          tempId,
         });
-
-        toast({
-          title: "Saved offline",
-          description: "Student will sync automatically when internet returns.",
-        });
-        closeDialog();
-        return;
+        toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Student added successfully" : "Student will sync when internet returns." });
       }
-
-      const { error } = await supabase
-        .from("students")
-        .insert([
-          {
-            admission_no: formData.admission_no,
-            full_name: formData.full_name,
-            parent_name: formData.parent_name || null,
-            class_id: formData.class_id || null,
-            parent_contact: formData.parent_contact || null,
-            school_id: schoolId,
-          },
-        ]);
-
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-      } else {
-        toast({ title: "Success", description: "Student added successfully" });
-        fetchStudents();
-        closeDialog();
-      }
+      closeDialog();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
-  const handleEdit = (student: Student) => {
+  const handleEdit = (student: typeof students[0]) => {
     setEditingStudent(student);
     setFormData({
       admission_no: student.admission_no,
@@ -289,24 +93,11 @@ const Students = () => {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this student?")) return;
 
-    if (!schoolId) return;
-
-    if (isOffline()) {
-      const next = students.filter((s) => s.id !== id);
-      setStudents(next);
-      await setOfflineCache(makeCacheKey(schoolId, "students"), next);
-      await enqueueOfflineOp({ table: "students", type: "delete", rowId: id });
-      toast({ title: "Saved offline", description: "Delete will sync when internet returns." });
-      return;
-    }
-
-    const { error } = await supabase.from("students").delete().eq("id", id);
-
-    if (error) {
+    try {
+      await deleteStudent(id);
+      toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Student deleted successfully" : "Delete will sync when internet returns." });
+    } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Student deleted successfully" });
-      fetchStudents();
     }
   };
 
@@ -328,7 +119,6 @@ const Students = () => {
     (student.parent_name && student.parent_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Pagination
   const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
   const paginatedStudents = filteredStudents.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -337,6 +127,21 @@ const Students = () => {
 
   return (
     <div className="space-y-6">
+      {/* Offline indicator */}
+      {(!isOnline || pendingOpsCount > 0) && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                {!isOnline ? "You're offline. " : ""}
+                {pendingOpsCount > 0 ? `${pendingOpsCount} change${pendingOpsCount > 1 ? 's' : ''} pending sync.` : "Data shown from cache."}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Students Management</h1>
@@ -498,29 +303,31 @@ const Students = () => {
                 </Table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
                   <p className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
+                    Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
+                    {Math.min(currentPage * ITEMS_PER_PAGE, filteredStudents.length)} of{" "}
+                    {filteredStudents.length} students
                   </p>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      Previous
                     </Button>
+                    <span className="flex items-center px-3 text-sm">
+                      Page {currentPage} of {totalPages}
+                    </span>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
                     >
-                      Next
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
