@@ -8,6 +8,7 @@ import { OfflineDataProvider } from "@/contexts/OfflineDataContext";
 import { ThemeProvider } from "next-themes";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
+import Install from "./pages/Install";
 import Onboarding from "./pages/Onboarding";
 import MainLayout from "./components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
@@ -36,6 +37,7 @@ const App = () => (
             <OfflineDataProvider>
               <Routes>
                 <Route path="/" element={<Landing />} />
+                <Route path="/install" element={<Install />} />
                 <Route path="/auth" element={<Auth />} />
                 {/* Onboarding redirects to dashboard - no longer needed */}
                 <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />

@@ -11,6 +11,7 @@ import {
   listOfflineOps,
   OfflineOpInput,
 } from "@/lib/offlineQueue";
+import { OfflineSubscription } from "@/hooks/useOfflineSubscription";
 
 export interface Student {
   id: string;
@@ -44,7 +45,23 @@ export interface FeeStructure {
 export interface SchoolInfo {
   id: string;
   school_name: string;
+  school_email?: string | null;
+  school_phone?: string | null;
+  school_address?: string | null;
   monthly_target: number;
+  yearly_target?: number;
+  school_logo_url?: string | null;
+}
+
+export interface OfflineSubscriptionData {
+  status: "trial" | "active" | "expired";
+  trialDaysRemaining: number;
+  maxStudents: number;
+  planType: string;
+  schoolId: string;
+  expiryDate: string | null;
+  daysUntilExpiry: number;
+  showExpiryWarning: boolean;
 }
 
 interface OfflineDataContextType {
@@ -52,12 +69,14 @@ interface OfflineDataContextType {
   payments: Payment[];
   feeStructures: FeeStructure[];
   schoolInfo: SchoolInfo | null;
+  subscription: OfflineSubscriptionData | null;
   loading: boolean;
   pendingOpsCount: number;
   isOnline: boolean;
+  lastSyncedAt: Date | null;
 
   // Actions
-  addStudent: (student: Omit<Student, "id" | "total_fee" | "class_name">) => Promise<void>;
+  addStudent: (student: Omit<Student, "id" | "total_fee" | "class_name">) => Promise<{ success: boolean; message?: string }>;
   updateStudent: (id: string, patch: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
 
@@ -68,7 +87,9 @@ interface OfflineDataContextType {
   updateFeeStructure: (id: string, patch: Partial<FeeStructure>) => Promise<void>;
   deleteFeeStructure: (id: string) => Promise<void>;
 
+  updateSchoolInfo: (patch: Partial<SchoolInfo>) => Promise<void>;
   refreshData: () => Promise<void>;
+  syncNow: () => Promise<{ synced: number; failed: number }>;
 }
 
 const OfflineDataContext = createContext<OfflineDataContextType | undefined>(undefined);
@@ -86,9 +107,11 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [payments, setPayments] = useState<Payment[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
+  const [subscription, setSubscription] = useState<OfflineSubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingOpsCount, setPendingOpsCount] = useState(0);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   // Track online/offline
   useEffect(() => {
@@ -107,6 +130,7 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (isOnline && schoolId) {
       syncOfflineQueue(supabase).then(({ synced }) => {
         if (synced > 0) {
+          setLastSyncedAt(new Date());
           window.dispatchEvent(new Event("offline-sync"));
         }
         updatePendingCount();
@@ -119,6 +143,18 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPendingOpsCount(ops.length);
   }, []);
 
+  // Manual sync trigger
+  const syncNow = useCallback(async (): Promise<{ synced: number; failed: number }> => {
+    if (isOffline()) return { synced: 0, failed: 0 };
+    const result = await syncOfflineQueue(supabase);
+    if (result.synced > 0) {
+      setLastSyncedAt(new Date());
+      window.dispatchEvent(new Event("offline-sync"));
+    }
+    await updatePendingCount();
+    return result;
+  }, [updatePendingCount]);
+
   const refreshData = useCallback(async () => {
     if (!schoolId) return;
 
@@ -126,16 +162,49 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     if (isOffline()) {
       // Load from cache
-      const [cachedStudents, cachedPayments, cachedFees, cachedSchool] = await Promise.all([
+      const [cachedStudents, cachedPayments, cachedFees, cachedSchool, cachedSub, cachedLastSync] = await Promise.all([
         getOfflineCache<Student[]>(makeCacheKey(schoolId, "students")),
         getOfflineCache<Payment[]>(makeCacheKey(schoolId, "payments")),
         getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures")),
         getOfflineCache<SchoolInfo>(`${schoolId}:school_info`),
+        getOfflineCache<OfflineSubscriptionData>(`${schoolId}:subscription`),
+        getOfflineCache<string>(`${schoolId}:last_synced`),
       ]);
       setStudents(cachedStudents || []);
       setPayments(cachedPayments || []);
       setFeeStructures(cachedFees || []);
       setSchoolInfo(cachedSchool || null);
+      
+      // Recalculate subscription status based on current date
+      if (cachedSub) {
+        const now = new Date();
+        let updatedSub = { ...cachedSub };
+        
+        if (cachedSub.expiryDate) {
+          const expiryDate = new Date(cachedSub.expiryDate);
+          const hoursRemaining = (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+          const daysRemaining = Math.max(0, Math.ceil(hoursRemaining / 24));
+
+          if (cachedSub.status === "trial") {
+            updatedSub.trialDaysRemaining = daysRemaining;
+            if (daysRemaining <= 0) {
+              updatedSub.status = "expired";
+            }
+          } else if (cachedSub.status === "active") {
+            updatedSub.daysUntilExpiry = daysRemaining;
+            updatedSub.showExpiryWarning = daysRemaining <= 7 && daysRemaining > 0;
+            if (daysRemaining <= 0) {
+              updatedSub.status = "expired";
+            }
+          }
+        }
+        setSubscription(updatedSub);
+      }
+      
+      if (cachedLastSync) {
+        setLastSyncedAt(new Date(cachedLastSync));
+      }
+      
       setLoading(false);
       await updatePendingCount();
       return;
@@ -155,7 +224,7 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           .eq("school_id", schoolId)
           .order("payment_date", { ascending: false }),
         supabase.from("fee_structures").select("*").eq("school_id", schoolId).order("class_name"),
-        supabase.from("schools").select("id, school_name, monthly_target").eq("id", schoolId).single(),
+        supabase.from("schools").select("*").eq("id", schoolId).single(),
       ]);
 
       const formattedStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
@@ -167,14 +236,58 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         student_name: p.students?.full_name || "N/A",
       }));
       const formattedFees: FeeStructure[] = feesRes.data || [];
-      const formattedSchool: SchoolInfo | null = schoolRes.data
-        ? { id: schoolRes.data.id, school_name: schoolRes.data.school_name, monthly_target: schoolRes.data.monthly_target || 0 }
+      
+      const school = schoolRes.data;
+      const formattedSchool: SchoolInfo | null = school
+        ? { 
+            id: school.id, 
+            school_name: school.school_name, 
+            school_email: school.school_email,
+            school_phone: school.school_phone,
+            school_address: school.school_address,
+            monthly_target: school.monthly_target || 0,
+            school_logo_url: school.school_logo_url,
+          }
         : null;
+
+      // Calculate subscription data
+      if (school) {
+        const now = new Date();
+        const trialEnd = school.trial_end ? new Date(school.trial_end) : now;
+        const hoursRemaining = (trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60);
+        const trialDaysRemaining = Math.max(0, Math.floor(hoursRemaining / 24));
+
+        let daysUntilExpiry = 0;
+        let showExpiryWarning = false;
+        const expiryDate = school.next_payment_date || school.trial_end;
+
+        if (school.subscription_status === 'active' && school.next_payment_date) {
+          const expiry = new Date(school.next_payment_date);
+          const expiryHoursRemaining = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60);
+          daysUntilExpiry = Math.max(0, Math.ceil(expiryHoursRemaining / 24));
+          showExpiryWarning = daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+        }
+
+        const subData: OfflineSubscriptionData = {
+          status: school.subscription_status as "trial" | "active" | "expired" || "trial",
+          trialDaysRemaining,
+          maxStudents: school.max_students || 50,
+          planType: school.plan_type || "trial",
+          schoolId: school.id,
+          expiryDate,
+          daysUntilExpiry,
+          showExpiryWarning,
+        };
+
+        setSubscription(subData);
+        await setOfflineCache(`${schoolId}:subscription`, subData);
+      }
 
       setStudents(formattedStudents);
       setPayments(formattedPayments);
       setFeeStructures(formattedFees);
       setSchoolInfo(formattedSchool);
+      setLastSyncedAt(new Date());
 
       // Cache for offline
       await Promise.all([
@@ -182,6 +295,7 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setOfflineCache(makeCacheKey(schoolId, "payments"), formattedPayments),
         setOfflineCache(makeCacheKey(schoolId, "fee_structures"), formattedFees),
         setOfflineCache(`${schoolId}:school_info`, formattedSchool),
+        setOfflineCache(`${schoolId}:last_synced`, new Date().toISOString()),
       ]);
     } catch (err) {
       console.error("Error refreshing data:", err);
@@ -200,8 +314,21 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // ==================== STUDENT ACTIONS ====================
   const addStudent = useCallback(
-    async (input: Omit<Student, "id" | "total_fee" | "class_name">) => {
-      if (!schoolId) return;
+    async (input: Omit<Student, "id" | "total_fee" | "class_name">): Promise<{ success: boolean; message?: string }> => {
+      if (!schoolId) return { success: false, message: "No school ID" };
+
+      // Check subscription limits
+      if (subscription) {
+        if (subscription.status === "expired") {
+          return { success: false, message: "Your subscription has expired. Please renew to add more students." };
+        }
+        if (students.length >= subscription.maxStudents) {
+          return { 
+            success: false, 
+            message: `You've reached the maximum of ${subscription.maxStudents} students for your ${subscription.planType} plan.` 
+          };
+        }
+      }
 
       const tempId = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
       const className = feeStructures.find((f) => f.id === input.class_id)?.class_name || "N/A";
@@ -225,20 +352,25 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           tempId,
         });
         await updatePendingCount();
-        return;
+        return { success: true };
       }
 
-      const { data, error } = await supabase.from("students").insert([{ ...input, school_id: schoolId }]).select().single();
+      try {
+        const { data, error } = await supabase.from("students").insert([{ ...input, school_id: schoolId }]).select().single();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // Replace temp with real
-      const realStudent: Student = { ...data, class_name: className };
-      const updated = next.map((s) => (s.id === tempId ? realStudent : s));
-      setStudents(updated);
-      await setOfflineCache(makeCacheKey(schoolId, "students"), updated);
+        // Replace temp with real
+        const realStudent: Student = { ...data, class_name: className };
+        const updated = next.map((s) => (s.id === tempId ? realStudent : s));
+        setStudents(updated);
+        await setOfflineCache(makeCacheKey(schoolId, "students"), updated);
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, message: err.message || "Failed to add student" };
+      }
     },
-    [schoolId, students, feeStructures, updatePendingCount]
+    [schoolId, students, feeStructures, subscription, updatePendingCount]
   );
 
   const updateStudent = useCallback(
@@ -427,6 +559,27 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [schoolId, feeStructures, updatePendingCount]
   );
 
+  // ==================== SCHOOL INFO ACTIONS ====================
+  const updateSchoolInfo = useCallback(
+    async (patch: Partial<SchoolInfo>) => {
+      if (!schoolId || !schoolInfo) return;
+
+      const updated = { ...schoolInfo, ...patch };
+      setSchoolInfo(updated);
+      await setOfflineCache(`${schoolId}:school_info`, updated);
+
+      if (isOffline()) {
+        // For school info, we don't queue offline ops since it's school-level settings
+        // Just keep it in local cache
+        return;
+      }
+
+      const { error } = await supabase.from("schools").update(patch).eq("id", schoolId);
+      if (error) throw error;
+    },
+    [schoolId, schoolInfo]
+  );
+
   return (
     <OfflineDataContext.Provider
       value={{
@@ -434,9 +587,11 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         payments,
         feeStructures,
         schoolInfo,
+        subscription,
         loading,
         pendingOpsCount,
         isOnline,
+        lastSyncedAt,
         addStudent,
         updateStudent,
         deleteStudent,
@@ -445,7 +600,9 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         addFeeStructure,
         updateFeeStructure,
         deleteFeeStructure,
+        updateSchoolInfo,
         refreshData,
+        syncNow,
       }}
     >
       {children}

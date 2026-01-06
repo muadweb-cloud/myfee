@@ -9,14 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { useSubscription } from "@/hooks/useSubscription";
 import { useOfflineData } from "@/contexts/OfflineDataContext";
 
 const ITEMS_PER_PAGE = 20;
 
 const Students = () => {
-  const { subscription } = useSubscription();
-  const { students, feeStructures, loading, addStudent, updateStudent, deleteStudent, pendingOpsCount, isOnline } = useOfflineData();
+  const { students, feeStructures, subscription, loading, addStudent, updateStudent, deleteStudent, pendingOpsCount, isOnline } = useOfflineData();
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -39,18 +37,6 @@ const Students = () => {
       return;
     }
 
-    // Check subscription limit when adding new student
-    if (!editingStudent && subscription && isOnline) {
-      if (students.length >= subscription.maxStudents) {
-        toast({
-          title: "Subscription Limit Reached",
-          description: `You have reached the maximum number of students (${subscription.maxStudents}) for your subscription plan.`,
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
     try {
       if (editingStudent) {
         await updateStudent(editingStudent.id, {
@@ -63,13 +49,20 @@ const Students = () => {
         });
         toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Student updated successfully" : "Update will sync when internet returns." });
       } else {
-        await addStudent({
+        // addStudent now returns { success, message } with built-in subscription limit checks
+        const result = await addStudent({
           admission_no: formData.admission_no,
           full_name: formData.full_name,
           parent_name: formData.parent_name || null,
           class_id: formData.class_id || null,
           parent_contact: formData.parent_contact || null,
         });
+        
+        if (!result.success) {
+          toast({ title: "Limit Reached", description: result.message, variant: "destructive" });
+          return;
+        }
+        
         toast({ title: isOnline ? "Success" : "Saved offline", description: isOnline ? "Student added successfully" : "Student will sync when internet returns." });
       }
       closeDialog();

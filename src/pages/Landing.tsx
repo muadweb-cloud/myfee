@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, DollarSign, BarChart3, Shield, ArrowRight, CheckCircle } from "lucide-react";
+import { Users, DollarSign, BarChart3, Shield, ArrowRight, CheckCircle, Download, WifiOff } from "lucide-react";
 import appIcon from "@/assets/app-icon.png";
 const Landing = () => {
   const features = [{
@@ -20,6 +20,10 @@ const Landing = () => {
     icon: Shield,
     title: "Secure & Reliable",
     description: "Your data is protected with enterprise-grade security and regular backups."
+  }, {
+    icon: WifiOff,
+    title: "Works Offline",
+    description: "Install as an app and work 100% offline. Data syncs when you're back online."
   }];
   const benefits = ["Real-time dashboard with financial overview", "Monthly target tracking and progress", "Automated fee structure management", "Payment history and receipt generation", "Multi-class fee configuration", "Subscription-based flexible plans"];
   return <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/10">
@@ -31,6 +35,12 @@ const Landing = () => {
             <span className="text-xl font-bold text-foreground">School Fee System</span>
           </div>
           <div className="flex items-center gap-4">
+            <Link to="/install">
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" />
+                Install App
+              </Button>
+            </Link>
             <Link to="/auth">
               <Button variant="ghost">Login</Button>
             </Link>
@@ -67,7 +77,7 @@ const Landing = () => {
                 </Button>
               </Link>
             </div>
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
+            <div className="flex items-center gap-6 text-sm text-muted-foreground flex-wrap">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
                 <span>7-day free trial</span>
@@ -75,6 +85,10 @@ const Landing = () => {
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
                 <span>No credit card required</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span>Works offline</span>
               </div>
             </div>
           </div>
