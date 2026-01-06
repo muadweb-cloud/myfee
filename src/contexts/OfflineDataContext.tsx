@@ -102,12 +102,11 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, []);
 
-  // Sync when coming back online
+  // Sync when coming back online - but DON'T overwrite local data
   useEffect(() => {
     if (isOnline && schoolId) {
       syncOfflineQueue(supabase).then(({ synced }) => {
         if (synced > 0) {
-          refreshData();
           window.dispatchEvent(new Event("offline-sync"));
         }
         updatePendingCount();
