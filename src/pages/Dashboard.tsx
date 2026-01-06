@@ -24,19 +24,24 @@ type TimeRange = '48hours' | '30days' | '3months' | '1year';
 
 const Dashboard = () => {
   const { subscription } = useSubscription();
-  const { students, payments, schoolInfo, loading, pendingOpsCount, isOnline } = useOfflineData();
+  const { students, payments, feeStructures, schoolInfo, loading, pendingOpsCount, isOnline } = useOfflineData();
   
   const [feeGraphRange, setFeeGraphRange] = useState<TimeRange>('30days');
   const [targetDialogOpen, setTargetDialogOpen] = useState(false);
 
-  // Calculate stats from local data
+  // Calculate stats from local data - compute expected fees from fee structures
   const stats = useMemo(() => {
     const totalStudents = students.length;
-    const totalExpectedFees = students.reduce((sum, s) => sum + Number(s.total_fee || 0), 0);
+    // Calculate expected fees from fee structures, not from student.total_fee
+    const totalExpectedFees = students.reduce((sum, s) => {
+      // Find fee for this student's class
+      const classFee = feeStructures.find((f) => f.id === s.class_id);
+      return sum + (classFee?.fee_amount || Number(s.total_fee || 0));
+    }, 0);
     const totalCollectedFees = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const totalBalance = totalExpectedFees - totalCollectedFees;
     return { totalStudents, totalExpectedFees, totalCollectedFees, totalBalance };
-  }, [students, payments]);
+  }, [students, payments, feeStructures]);
 
   // Recent payments (last 5)
   const recentPayments = useMemo(() => {
