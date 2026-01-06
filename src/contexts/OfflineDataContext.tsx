@@ -143,17 +143,61 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPendingOpsCount(ops.length);
   }, []);
 
-  // Manual sync trigger
+  // Manual sync trigger - refreshes data after syncing to get server-generated IDs
   const syncNow = useCallback(async (): Promise<{ synced: number; failed: number }> => {
     if (isOffline()) return { synced: 0, failed: 0 };
     const result = await syncOfflineQueue(supabase);
-    if (result.synced > 0) {
+    await updatePendingCount();
+    
+    // After syncing, refresh data from server to get real IDs and latest state
+    if (result.synced > 0 && schoolId) {
+      try {
+        const [studentsRes, paymentsRes, feesRes, schoolRes] = await Promise.all([
+          supabase
+            .from("students")
+            .select("*, fee_structures (class_name)")
+            .eq("school_id", schoolId)
+            .order("admission_no"),
+          supabase
+            .from("payments")
+            .select("*, students (full_name)")
+            .eq("school_id", schoolId)
+            .order("payment_date", { ascending: false }),
+          supabase.from("fee_structures").select("*").eq("school_id", schoolId).order("class_name"),
+          supabase.from("schools").select("*").eq("id", schoolId).single(),
+        ]);
+
+        const formattedStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
+          ...s,
+          class_name: s.fee_structures?.class_name || "N/A",
+        }));
+        const formattedPayments: Payment[] = (paymentsRes.data || []).map((p: any) => ({
+          ...p,
+          student_name: p.students?.full_name || "N/A",
+        }));
+        const formattedFees: FeeStructure[] = feesRes.data || [];
+
+        setStudents(formattedStudents);
+        setPayments(formattedPayments);
+        setFeeStructures(formattedFees);
+
+        // Update cache with real server data
+        await Promise.all([
+          setOfflineCache(makeCacheKey(schoolId, "students"), formattedStudents),
+          setOfflineCache(makeCacheKey(schoolId, "payments"), formattedPayments),
+          setOfflineCache(makeCacheKey(schoolId, "fee_structures"), formattedFees),
+          setOfflineCache(`${schoolId}:last_synced`, new Date().toISOString()),
+        ]);
+      } catch (err) {
+        console.error("Error refreshing after sync:", err);
+      }
+      
       setLastSyncedAt(new Date());
       window.dispatchEvent(new Event("offline-sync"));
     }
-    await updatePendingCount();
+    
     return result;
-  }, [updatePendingCount]);
+  }, [updatePendingCount, schoolId]);
 
   const refreshData = useCallback(async () => {
     if (!schoolId) return;
