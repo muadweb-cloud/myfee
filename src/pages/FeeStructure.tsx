@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
+import { enqueueOfflineOp, getOfflineCache, isOffline, makeCacheKey, setOfflineCache } from "@/lib/offlineQueue";
 
 interface FeeStructure {
   id: string;
@@ -36,13 +37,31 @@ const FeeStructure = () => {
   useEffect(() => {
     if (schoolId) {
       fetchFeeStructures();
+
+      const onSynced = () => {
+        if (!isOffline()) fetchFeeStructures();
+      };
+      window.addEventListener("offline-sync", onSynced);
+      return () => window.removeEventListener("offline-sync", onSynced);
     }
   }, [schoolId]);
 
   const fetchFeeStructures = async () => {
     if (!schoolId) return;
-    
+
     setLoading(true);
+
+    if (isOffline()) {
+      const cached = await getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures"));
+      setFeeStructures(cached || []);
+      setLoading(false);
+      toast({
+        title: "Offline mode",
+        description: "Showing last saved data. New changes will sync when internet returns.",
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from("fee_structures")
       .select("*")
@@ -51,6 +70,7 @@ const FeeStructure = () => {
 
     if (!error && data) {
       setFeeStructures(data);
+      await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), data);
     }
     setLoading(false);
   };
@@ -75,6 +95,36 @@ const FeeStructure = () => {
     }
 
     if (editingStructure) {
+      if (isOffline()) {
+        const updated: FeeStructure = {
+          ...editingStructure,
+          class_name: formData.class_name,
+          fee_amount: feeAmount,
+          description: formData.description || null,
+        };
+
+        const next = feeStructures.map((f) => (f.id === editingStructure.id ? updated : f));
+        setFeeStructures(next);
+        await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), next);
+        await enqueueOfflineOp({
+          table: "fee_structures",
+          type: "update",
+          rowId: editingStructure.id,
+          patch: {
+            class_name: formData.class_name,
+            fee_amount: feeAmount,
+            description: formData.description || null,
+          },
+        });
+
+        toast({
+          title: "Saved offline",
+          description: "Fee structure update will sync when internet returns.",
+        });
+        closeDialog();
+        return;
+      }
+
       const { error } = await supabase
         .from("fee_structures")
         .update({
@@ -92,14 +142,48 @@ const FeeStructure = () => {
         closeDialog();
       }
     } else {
-      const { error } = await supabase
-        .from("fee_structures")
-        .insert([{
+      if (isOffline()) {
+        const tempId = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+        const local: FeeStructure = {
+          id: tempId,
           class_name: formData.class_name,
           fee_amount: feeAmount,
           description: formData.description || null,
-          school_id: schoolId,
-        }]);
+        };
+        const next = [...feeStructures, local].sort((a, b) => a.class_name.localeCompare(b.class_name));
+        setFeeStructures(next);
+        await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), next);
+
+        await enqueueOfflineOp({
+          table: "fee_structures",
+          type: "insert",
+          payload: {
+            class_name: formData.class_name,
+            fee_amount: feeAmount,
+            description: formData.description || null,
+            school_id: schoolId,
+          },
+          tempId,
+        });
+
+        toast({
+          title: "Saved offline",
+          description: "Fee structure will sync when internet returns.",
+        });
+        closeDialog();
+        return;
+      }
+
+      const { error } = await supabase
+        .from("fee_structures")
+        .insert([
+          {
+            class_name: formData.class_name,
+            fee_amount: feeAmount,
+            description: formData.description || null,
+            school_id: schoolId,
+          },
+        ]);
 
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -123,11 +207,18 @@ const FeeStructure = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this fee structure? This will affect students assigned to this class.")) return;
+    if (!schoolId) return;
 
-    const { error } = await supabase
-      .from("fee_structures")
-      .delete()
-      .eq("id", id);
+    if (isOffline()) {
+      const next = feeStructures.filter((f) => f.id !== id);
+      setFeeStructures(next);
+      await setOfflineCache(makeCacheKey(schoolId, "fee_structures"), next);
+      await enqueueOfflineOp({ table: "fee_structures", type: "delete", rowId: id });
+      toast({ title: "Saved offline", description: "Delete will sync when internet returns." });
+      return;
+    }
+
+    const { error } = await supabase.from("fee_structures").delete().eq("id", id);
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
