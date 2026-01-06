@@ -117,6 +117,47 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPendingOpsCount(ops.length);
   }, []);
 
+  const applyOfflineOpsToList = useCallback(
+    async <T extends { id: string }>(
+      table: "students" | "payments" | "fee_structures",
+      serverList: T[],
+      localList: T[],
+    ): Promise<T[]> => {
+      const ops = (await listOfflineOps()).filter((o) => o.table === table);
+      if (ops.length === 0) return serverList;
+
+      const byId = new Map<string, T>();
+      for (const row of serverList) byId.set(row.id, row);
+
+      const localById = new Map<string, T>();
+      for (const row of localList) localById.set(row.id, row);
+
+      for (const op of ops) {
+        if (op.type === "insert") {
+          const tempId = (op as any).tempId as string | undefined;
+          if (!tempId) continue;
+          const localRow = localById.get(tempId);
+          if (localRow && !byId.has(tempId)) byId.set(tempId, localRow);
+        }
+
+        if (op.type === "update") {
+          const rowId = (op as any).rowId as string;
+          const patch = (op as any).patch as Record<string, any>;
+          const existing = byId.get(rowId) ?? localById.get(rowId);
+          if (existing) byId.set(rowId, { ...(existing as any), ...(patch as any) });
+        }
+
+        if (op.type === "delete") {
+          const rowId = (op as any).rowId as string;
+          byId.delete(rowId);
+        }
+      }
+
+      return Array.from(byId.values());
+    },
+    [],
+  );
+
   // Track online/offline
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -163,16 +204,30 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
             }));
             const serverFees: FeeStructure[] = feesRes.data || [];
 
-            // Update state with server data (which now includes synced local changes)
-            setStudents(serverStudents);
-            setPayments(serverPayments);
-            setFeeStructures(serverFees);
+            const [cachedStudents, cachedPayments, cachedFees] = await Promise.all([
+              getOfflineCache<Student[]>(makeCacheKey(schoolId, "students")),
+              getOfflineCache<Payment[]>(makeCacheKey(schoolId, "payments")),
+              getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures")),
+            ]);
 
-            // Update cache
+            const mergedStudents = (
+              await applyOfflineOpsToList("students", serverStudents, cachedStudents || students)
+            ).sort((a, b) => a.admission_no.localeCompare(b.admission_no));
+            const mergedPayments = (
+              await applyOfflineOpsToList("payments", serverPayments, cachedPayments || payments)
+            ).sort((a, b) => (b.payment_date || "").localeCompare(a.payment_date || ""));
+            const mergedFees = (
+              await applyOfflineOpsToList("fee_structures", serverFees, cachedFees || feeStructures)
+            ).sort((a, b) => a.class_name.localeCompare(b.class_name));
+
+            setStudents(mergedStudents);
+            setPayments(mergedPayments);
+            setFeeStructures(mergedFees);
+
             await Promise.all([
-              setOfflineCache(makeCacheKey(schoolId, "students"), serverStudents),
-              setOfflineCache(makeCacheKey(schoolId, "payments"), serverPayments),
-              setOfflineCache(makeCacheKey(schoolId, "fee_structures"), serverFees),
+              setOfflineCache(makeCacheKey(schoolId, "students"), mergedStudents),
+              setOfflineCache(makeCacheKey(schoolId, "payments"), mergedPayments),
+              setOfflineCache(makeCacheKey(schoolId, "fee_structures"), mergedFees),
               setOfflineCache(`${schoolId}:last_synced`, new Date().toISOString()),
             ]);
 
@@ -184,7 +239,7 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       })();
     }
-  }, [isOnline, schoolId, updatePendingCount]);
+  }, [isOnline, schoolId, updatePendingCount, applyOfflineOpsToList, students, payments, feeStructures]);
 
   // Manual sync trigger - refreshes data after syncing to get server-generated IDs
   const syncNow = useCallback(async (): Promise<{ synced: number; failed: number }> => {
@@ -193,9 +248,10 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     await updatePendingCount();
     
     // After syncing, refresh data from server to get real IDs and latest state
+    // IMPORTANT: never let server data wipe out offline-only records that are still pending sync.
     if (result.synced > 0 && schoolId) {
       try {
-        const [studentsRes, paymentsRes, feesRes, schoolRes] = await Promise.all([
+        const [studentsRes, paymentsRes, feesRes] = await Promise.all([
           supabase
             .from("students")
             .select("*, fee_structures (class_name)")
@@ -207,40 +263,54 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
             .eq("school_id", schoolId)
             .order("payment_date", { ascending: false }),
           supabase.from("fee_structures").select("*").eq("school_id", schoolId).order("class_name"),
-          supabase.from("schools").select("*").eq("id", schoolId).single(),
         ]);
 
-        const formattedStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
+        const serverStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
           ...s,
           class_name: s.fee_structures?.class_name || "N/A",
         }));
-        const formattedPayments: Payment[] = (paymentsRes.data || []).map((p: any) => ({
+        const serverPayments: Payment[] = (paymentsRes.data || []).map((p: any) => ({
           ...p,
           student_name: p.students?.full_name || "N/A",
         }));
-        const formattedFees: FeeStructure[] = feesRes.data || [];
+        const serverFees: FeeStructure[] = feesRes.data || [];
 
-        setStudents(formattedStudents);
-        setPayments(formattedPayments);
-        setFeeStructures(formattedFees);
+        const [cachedStudents, cachedPayments, cachedFees] = await Promise.all([
+          getOfflineCache<Student[]>(makeCacheKey(schoolId, "students")),
+          getOfflineCache<Payment[]>(makeCacheKey(schoolId, "payments")),
+          getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures")),
+        ]);
 
-        // Update cache with real server data
+        const mergedStudents = (
+          await applyOfflineOpsToList("students", serverStudents, cachedStudents || students)
+        ).sort((a, b) => a.admission_no.localeCompare(b.admission_no));
+        const mergedPayments = (
+          await applyOfflineOpsToList("payments", serverPayments, cachedPayments || payments)
+        ).sort((a, b) => (b.payment_date || "").localeCompare(a.payment_date || ""));
+        const mergedFees = (
+          await applyOfflineOpsToList("fee_structures", serverFees, cachedFees || feeStructures)
+        ).sort((a, b) => a.class_name.localeCompare(b.class_name));
+
+        setStudents(mergedStudents);
+        setPayments(mergedPayments);
+        setFeeStructures(mergedFees);
+
         await Promise.all([
-          setOfflineCache(makeCacheKey(schoolId, "students"), formattedStudents),
-          setOfflineCache(makeCacheKey(schoolId, "payments"), formattedPayments),
-          setOfflineCache(makeCacheKey(schoolId, "fee_structures"), formattedFees),
+          setOfflineCache(makeCacheKey(schoolId, "students"), mergedStudents),
+          setOfflineCache(makeCacheKey(schoolId, "payments"), mergedPayments),
+          setOfflineCache(makeCacheKey(schoolId, "fee_structures"), mergedFees),
           setOfflineCache(`${schoolId}:last_synced`, new Date().toISOString()),
         ]);
       } catch (err) {
         console.error("Error refreshing after sync:", err);
       }
-      
+
       setLastSyncedAt(new Date());
       window.dispatchEvent(new Event("offline-sync"));
     }
     
     return result;
-  }, [updatePendingCount, schoolId]);
+  }, [updatePendingCount, schoolId, applyOfflineOpsToList, students, payments, feeStructures]);
 
   const refreshData = useCallback(async () => {
     if (!schoolId) return;
@@ -298,6 +368,16 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     try {
+      // Load cached first so the UI never "loses" offline-only records when internet comes back.
+      const [cachedStudents, cachedPayments, cachedFees] = await Promise.all([
+        getOfflineCache<Student[]>(makeCacheKey(schoolId, "students")),
+        getOfflineCache<Payment[]>(makeCacheKey(schoolId, "payments")),
+        getOfflineCache<FeeStructure[]>(makeCacheKey(schoolId, "fee_structures")),
+      ]);
+      if (cachedStudents) setStudents(cachedStudents);
+      if (cachedPayments) setPayments(cachedPayments);
+      if (cachedFees) setFeeStructures(cachedFees);
+
       // Fetch from server
       const [studentsRes, paymentsRes, feesRes, schoolRes] = await Promise.all([
         supabase
@@ -314,15 +394,15 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         supabase.from("schools").select("*").eq("id", schoolId).single(),
       ]);
 
-      const formattedStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
+      const serverStudents: Student[] = (studentsRes.data || []).map((s: any) => ({
         ...s,
         class_name: s.fee_structures?.class_name || "N/A",
       }));
-      const formattedPayments: Payment[] = (paymentsRes.data || []).map((p: any) => ({
+      const serverPayments: Payment[] = (paymentsRes.data || []).map((p: any) => ({
         ...p,
         student_name: p.students?.full_name || "N/A",
       }));
-      const formattedFees: FeeStructure[] = feesRes.data || [];
+      const serverFees: FeeStructure[] = feesRes.data || [];
       
       const school = schoolRes.data;
       const formattedSchool: SchoolInfo | null = school
@@ -370,17 +450,27 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         await setOfflineCache(`${schoolId}:subscription`, subData);
       }
 
-      setStudents(formattedStudents);
-      setPayments(formattedPayments);
-      setFeeStructures(formattedFees);
+      const mergedStudents = (
+        await applyOfflineOpsToList("students", serverStudents, cachedStudents || students)
+      ).sort((a, b) => a.admission_no.localeCompare(b.admission_no));
+      const mergedPayments = (
+        await applyOfflineOpsToList("payments", serverPayments, cachedPayments || payments)
+      ).sort((a, b) => (b.payment_date || "").localeCompare(a.payment_date || ""));
+      const mergedFees = (
+        await applyOfflineOpsToList("fee_structures", serverFees, cachedFees || feeStructures)
+      ).sort((a, b) => a.class_name.localeCompare(b.class_name));
+
+      setStudents(mergedStudents);
+      setPayments(mergedPayments);
+      setFeeStructures(mergedFees);
       setSchoolInfo(formattedSchool);
       setLastSyncedAt(new Date());
 
-      // Cache for offline
+      // Cache for offline (merged so server never wipes pending local changes)
       await Promise.all([
-        setOfflineCache(makeCacheKey(schoolId, "students"), formattedStudents),
-        setOfflineCache(makeCacheKey(schoolId, "payments"), formattedPayments),
-        setOfflineCache(makeCacheKey(schoolId, "fee_structures"), formattedFees),
+        setOfflineCache(makeCacheKey(schoolId, "students"), mergedStudents),
+        setOfflineCache(makeCacheKey(schoolId, "payments"), mergedPayments),
+        setOfflineCache(makeCacheKey(schoolId, "fee_structures"), mergedFees),
         setOfflineCache(`${schoolId}:school_info`, formattedSchool),
         setOfflineCache(`${schoolId}:last_synced`, new Date().toISOString()),
       ]);
@@ -390,7 +480,7 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setLoading(false);
       await updatePendingCount();
     }
-  }, [schoolId, updatePendingCount]);
+  }, [schoolId, updatePendingCount, applyOfflineOpsToList, students, payments, feeStructures]);
 
   // Initial load
   useEffect(() => {
