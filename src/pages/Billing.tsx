@@ -7,8 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/formatters";
 import { useSchoolId } from "@/hooks/useSchoolId";
-import { useSubscription } from "@/hooks/useSubscription";
-import { Calendar, MessageCircle, Mail, CheckCircle } from "lucide-react";
+import { useOfflineData } from "@/contexts/OfflineDataContext";
+import { Calendar, MessageCircle, Mail, CheckCircle, WifiOff, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface BillingRecord {
@@ -48,7 +48,7 @@ const plans = [
 
 const Billing = () => {
   const { schoolId } = useSchoolId();
-  const { subscription } = useSubscription();
+  const { subscription, isOnline } = useOfflineData();
   const { toast } = useToast();
   const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +57,14 @@ const Billing = () => {
   const [selectedPlan, setSelectedPlan] = useState<{ name: string; type: string; amount: number } | null>(null);
 
   const handleRequestClick = (planName: string, type: string, amount: number) => {
+    if (!isOnline) {
+      toast({
+        title: "Offline",
+        description: "You need internet connection to request a subscription. Please connect and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSelectedPlan({ name: planName, type, amount });
     setContactDialogOpen(true);
   };
@@ -74,10 +82,12 @@ const Billing = () => {
   };
 
   useEffect(() => {
-    if (schoolId) {
+    if (schoolId && isOnline) {
       fetchBillingHistory();
+    } else {
+      setLoading(false);
     }
-  }, [schoolId]);
+  }, [schoolId, isOnline]);
 
   const fetchBillingHistory = async () => {
     if (!schoolId) return;
@@ -152,6 +162,40 @@ const Billing = () => {
 
   return (
     <div className="space-y-6">
+      {/* Offline Warning */}
+      {!isOnline && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <WifiOff className="h-5 w-5 text-amber-600" />
+              <div>
+                <p className="font-medium text-amber-700 dark:text-amber-400">You're Offline</p>
+                <p className="text-sm text-amber-600 dark:text-amber-500">
+                  Connect to the internet to request subscription changes or view billing history.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Subscription Expired Warning */}
+      {subscription?.status === "expired" && (
+        <Card className="border-red-500 bg-red-50 dark:bg-red-950/30">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <div>
+                <p className="font-medium text-red-700 dark:text-red-400">Subscription Expired</p>
+                <p className="text-sm text-red-600 dark:text-red-500">
+                  Your subscription has expired. Please renew to continue using all features.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold text-foreground">Billing & Subscription</h1>
         <p className="text-muted-foreground">Manage your school subscription plan</p>
@@ -190,13 +234,13 @@ const Billing = () => {
                 <p className="text-lg font-semibold capitalize">{subscription.planType}</p>
                 <p className="text-sm text-muted-foreground">Max {subscription.maxStudents} students</p>
               </div>
-              {subscription.nextPaymentDate && (
+              {subscription.expiryDate && (
                 <div>
-                  <p className="text-sm text-muted-foreground">Next Payment Date</p>
+                  <p className="text-sm text-muted-foreground">Expiry Date</p>
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
                     <p className="text-sm">
-                      {new Date(subscription.nextPaymentDate).toLocaleDateString()}
+                      {new Date(subscription.expiryDate).toLocaleDateString()}
                     </p>
                   </div>
                 </div>

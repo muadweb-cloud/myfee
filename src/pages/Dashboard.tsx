@@ -1,10 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, DollarSign, TrendingUp, AlertCircle, CalendarClock, BarChart3 } from "lucide-react";
+import { Users, DollarSign, TrendingUp, AlertCircle, CalendarClock, BarChart3, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { useSubscription } from "@/hooks/useSubscription";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,7 @@ import SubscriptionExpiryWarning from "@/components/SubscriptionExpiryWarning";
 import TargetSettingDialog from "@/components/TargetSettingDialog";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useOfflineData } from "@/contexts/OfflineDataContext";
-import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChartDataPoint {
   label: string;
@@ -23,11 +22,26 @@ interface ChartDataPoint {
 type TimeRange = '48hours' | '30days' | '3months' | '1year';
 
 const Dashboard = () => {
-  const { subscription } = useSubscription();
-  const { students, payments, feeStructures, schoolInfo, loading, pendingOpsCount, isOnline } = useOfflineData();
+  const { students, payments, feeStructures, schoolInfo, subscription, loading, pendingOpsCount, isOnline, lastSyncedAt, syncNow } = useOfflineData();
+  const { toast } = useToast();
   
   const [feeGraphRange, setFeeGraphRange] = useState<TimeRange>('30days');
   const [targetDialogOpen, setTargetDialogOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!isOnline) {
+      toast({ title: "Offline", description: "Cannot sync while offline", variant: "destructive" });
+      return;
+    }
+    setSyncing(true);
+    const result = await syncNow();
+    setSyncing(false);
+    toast({
+      title: "Sync Complete",
+      description: result.synced > 0 ? `${result.synced} changes synced successfully` : "No pending changes to sync",
+    });
+  };
 
   // Calculate stats from local data - compute expected fees from fee structures
   const stats = useMemo(() => {
@@ -237,16 +251,37 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Offline indicator */}
+      {/* Offline indicator with sync button */}
       {(!isOnline || pendingOpsCount > 0) && (
         <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
           <CardContent className="py-3">
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">
-                {!isOnline ? "You're offline. " : ""}
-                {pendingOpsCount > 0 ? `${pendingOpsCount} change${pendingOpsCount > 1 ? 's' : ''} pending sync.` : "Data shown from cache."}
-              </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  {!isOnline ? "You're offline. " : ""}
+                  {pendingOpsCount > 0 ? `${pendingOpsCount} change${pendingOpsCount > 1 ? 's' : ''} pending sync.` : "Data shown from cache."}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {lastSyncedAt && (
+                  <span className="text-xs text-muted-foreground">
+                    Last synced: {lastSyncedAt.toLocaleTimeString()}
+                  </span>
+                )}
+                {isOnline && pendingOpsCount > 0 && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleSync}
+                    disabled={syncing}
+                    className="gap-1"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? "Syncing..." : "Sync Now"}
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

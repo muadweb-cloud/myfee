@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Download, FileText, ChevronDown } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/formatters";
+import { Download, FileText, ChevronDown, AlertCircle, WifiOff } from "lucide-react";
+import { formatCurrency } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
+import { useOfflineData } from "@/contexts/OfflineDataContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -22,60 +22,37 @@ interface StudentBalance {
 }
 
 const Reports = () => {
-  const [studentsWithBalance, setStudentsWithBalance] = useState<StudentBalance[]>([]);
-  const [fullyPaidStudents, setFullyPaidStudents] = useState<StudentBalance[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { students, payments, feeStructures, loading, isOnline, pendingOpsCount } = useOfflineData();
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
+  // Calculate student balances from offline data
+  const { studentsWithBalance, fullyPaidStudents } = useMemo(() => {
+    const studentBalances: StudentBalance[] = students.map((student) => {
+      // Get fee from fee structure
+      const feeStructure = feeStructures.find((f) => f.id === student.class_id);
+      const totalFee = feeStructure?.fee_amount || Number(student.total_fee || 0);
+      
+      // Calculate payments for this student
+      const studentPayments = payments.filter((p) => p.student_id === student.id);
+      const totalPaid = studentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const balance = totalFee - totalPaid;
 
-  const fetchReports = async () => {
-    setLoading(true);
-    
-    // Fetch all students with their classes
-    const { data: students } = await supabase
-      .from("students")
-      .select(`
-        id,
-        admission_no,
-        full_name,
-        total_fee,
-        fee_structures (class_name)
-      `)
-      .order("full_name");
+      return {
+        id: student.id,
+        admission_no: student.admission_no,
+        full_name: student.full_name,
+        class_name: student.class_name || "N/A",
+        total_fee: totalFee,
+        total_paid: totalPaid,
+        balance: balance,
+      };
+    });
 
-    if (students) {
-      // Fetch all payments
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("student_id, amount");
-
-      // Calculate totals for each student
-      const studentBalances: StudentBalance[] = students.map((student: any) => {
-        const studentPayments = payments?.filter(p => p.student_id === student.id) || [];
-        const totalPaid = studentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-        const balance = Number(student.total_fee) - totalPaid;
-
-        return {
-          id: student.id,
-          admission_no: student.admission_no,
-          full_name: student.full_name,
-          class_name: student.fee_structures?.class_name || "N/A",
-          total_fee: Number(student.total_fee),
-          total_paid: totalPaid,
-          balance: balance,
-        };
-      });
-
-      // Split into balance and fully paid
-      setStudentsWithBalance(studentBalances.filter(s => s.balance > 0));
-      setFullyPaidStudents(studentBalances.filter(s => s.balance <= 0));
-    }
-
-    setLoading(false);
-  };
+    return {
+      studentsWithBalance: studentBalances.filter((s) => s.balance > 0),
+      fullyPaidStudents: studentBalances.filter((s) => s.balance <= 0),
+    };
+  }, [students, payments, feeStructures]);
 
   const exportToCSV = (data: StudentBalance[], filename: string) => {
     const headers = ["Admission No", "Name", "Class", "Total Fee", "Paid", "Balance"];
@@ -163,6 +140,22 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
+      {/* Offline indicator */}
+      {(!isOnline || pendingOpsCount > 0) && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <WifiOff className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                {!isOnline ? "Offline mode - " : ""}
+                Reports generated from local data.
+                {pendingOpsCount > 0 ? ` ${pendingOpsCount} change${pendingOpsCount > 1 ? 's' : ''} pending sync.` : ""}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold">Reports</h1>
         <p className="text-muted-foreground">Generate and export financial reports</p>
