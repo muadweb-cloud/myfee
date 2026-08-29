@@ -121,8 +121,8 @@ const Install = () => {
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={appIcon} alt="MyFee" className="h-10 w-10 object-contain" />
-            <span className="font-bold text-xl">MyFee</span>
+            <img src={appIcon} alt="Shule Yako" className="h-10 w-10 object-contain" />
+            <span className="font-bold text-xl">Shule Yako</span>
           </div>
           <div className="flex items-center gap-2">
             {isOnline ? (
@@ -152,7 +152,7 @@ const Install = () => {
           </div>
           
           <h1 className="text-4xl md:text-5xl font-bold text-foreground max-w-3xl mx-auto leading-tight">
-            Install MyFee on Your Device
+            Install Shule Yako on Your Device
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -206,7 +206,7 @@ const Install = () => {
                   </p>
                   <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
                     <li>Open browser menu (⋮)</li>
-                    <li>Click "Install MyFee" or "Add to Desktop"</li>
+                    <li>Click "Install Shule Yako" or "Add to Desktop"</li>
                     <li>Confirm installation</li>
                   </ol>
                 </div>
@@ -331,7 +331,7 @@ const Install = () => {
       {/* Footer */}
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} MyFee - School Fee Management System</p>
+          <p>© {new Date().getFullYear()} Shule Yako - School Fee Management System</p>
           <p className="mt-2">Works 100% offline after installation</p>
         </div>
       </footer>

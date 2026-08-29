@@ -290,7 +290,7 @@ const Dashboard = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <img src={appIcon} alt="School Fee System" className="h-12 w-12 object-contain" />
+          <img src={appIcon} alt="Shule Yako" className="h-12 w-12 object-contain" />
           <div>
             <h1 className="text-3xl font-bold text-foreground">{schoolInfo?.school_name || "Dashboard"}</h1>
             <p className="text-muted-foreground">Welcome back! Here's your school's financial overview</p>
