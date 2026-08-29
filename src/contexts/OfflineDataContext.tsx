@@ -564,7 +564,9 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
-      const { error } = await supabase.from("students").update(patch).eq("id", id);
+      // Strip UI-only fields not present in the database table
+      const { class_name, ...dbPatch } = patch as Partial<Student> & { class_name?: string };
+      const { error } = await supabase.from("students").update(dbPatch).eq("id", id);
       if (error) throw error;
     },
     [schoolId, students, updatePendingCount]
@@ -653,7 +655,9 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
-      const { error } = await supabase.from("payments").update(patch).eq("id", id);
+      // Strip UI-only fields not present in the database table
+      const { student_name, ...dbPatch } = patch as Partial<Payment> & { student_name?: string };
+      const { error } = await supabase.from("payments").update(dbPatch).eq("id", id);
       if (error) throw error;
     },
     [schoolId, payments, updatePendingCount]
@@ -751,7 +755,9 @@ export const OfflineDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
-      const { error } = await supabase.from("schools").update(patch).eq("id", schoolId);
+      // Strip UI-only fields not present in the database table
+      const { yearly_target, ...dbPatch } = patch as Partial<SchoolInfo> & { yearly_target?: number };
+      const { error } = await supabase.from("schools").update(dbPatch).eq("id", schoolId);
       if (error) throw error;
     },
     [schoolId, schoolInfo]
