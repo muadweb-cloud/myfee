@@ -17,8 +17,8 @@ export default defineConfig(({ mode }) => ({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "robots.txt"],
       manifest: {
-        name: "School Fee Management System",
-        short_name: "MyFee",
+        name: "Shule Yako",
+        short_name: "Shule Yako",
         description: "Complete school fee management system for administrators",
         theme_color: "#1e40af",
         background_color: "#ffffff",

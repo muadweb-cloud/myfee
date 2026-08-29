@@ -31,8 +31,8 @@ const Landing = () => {
       <header className="container mx-auto px-4 py-6">
         <nav className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={appIcon} alt="School Fee System" className="h-12 w-12 object-contain" />
-            <span className="text-xl font-bold text-foreground">School Fee System</span>
+            <img src={appIcon} alt="Shule Yako" className="h-12 w-12 object-contain" />
+            <span className="text-xl font-bold text-foreground">Shule Yako</span>
           </div>
           <div className="flex items-center gap-4">
             <Link to="/install">
@@ -184,7 +184,7 @@ const Landing = () => {
               </div>
             </div>
             <div className="flex justify-center">
-              <img src={appIcon} alt="School Fee System" className="h-48 w-48 object-contain opacity-80" />
+              <img src={appIcon} alt="Shule Yako" className="h-48 w-48 object-contain opacity-80" />
             </div>
           </div>
         </div>
@@ -210,11 +210,11 @@ const Landing = () => {
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <img src={appIcon} alt="School Fee System" className="h-8 w-8 object-contain" />
-              <span className="font-semibold text-foreground">School Fee System</span>
+              <img src={appIcon} alt="Shule Yako" className="h-8 w-8 object-contain" />
+              <span className="font-semibold text-foreground">Shule Yako</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} School Fee System. All rights reserved.
+              © {new Date().getFullYear()} Shule Yako. All rights reserved.
             </p>
           </div>
         </div>

@@ -339,7 +339,7 @@ const Auth = () => {
         <Card className="w-full max-w-md shadow-lg">
           <CardHeader className="text-center space-y-2">
             <div className="flex justify-center mb-2">
-              <img src={appIcon} alt="School Fee System" className="h-16 w-16 object-contain" />
+              <img src={appIcon} alt="Shule Yako" className="h-16 w-16 object-contain" />
             </div>
             <CardTitle className="text-2xl">Reset Your Password</CardTitle>
             <CardDescription>Enter your new password below</CardDescription>
@@ -383,9 +383,9 @@ const Auth = () => {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center space-y-2">
           <div className="flex justify-center mb-2">
-            <img src={appIcon} alt="School Fee System" className="h-16 w-16 object-contain" />
+            <img src={appIcon} alt="Shule Yako" className="h-16 w-16 object-contain" />
           </div>
-          <CardTitle className="text-2xl">School Fee System</CardTitle>
+          <CardTitle className="text-2xl">Shule Yako</CardTitle>
           <CardDescription>Admin Portal - Manage your school's finances</CardDescription>
         </CardHeader>
         <CardContent>

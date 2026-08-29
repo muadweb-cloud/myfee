@@ -11,7 +11,7 @@ const Contact = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <img src={appIcon} alt="School Fee System" className="h-12 w-12 object-contain" />
+        <img src={appIcon} alt="Shule Yako" className="h-12 w-12 object-contain" />
         <div>
           <h1 className="text-2xl font-bold">Contact Us</h1>
           <p className="text-muted-foreground">Get in touch with our support team</p>
